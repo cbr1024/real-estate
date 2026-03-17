@@ -125,7 +125,7 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
 
     for (const item of allItems) {
       try {
-        const aptName = (item.aptNm || item['아파트'] || '').trim();
+        const aptName = String(item.aptNm || item['아파트'] || '').trim();
         const year = String(item.dealYear || item['년'] || '').trim();
         const month = String(item.dealMonth || item['월'] || '').trim().padStart(2, '0');
         const day = String(item.dealDay || item['일'] || '').trim().padStart(2, '0');

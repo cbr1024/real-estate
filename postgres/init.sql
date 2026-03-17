@@ -58,4 +58,5 @@ CREATE TABLE data_sync_log (
 CREATE INDEX idx_apartments_lat_lng ON apartments (lat, lng);
 CREATE INDEX idx_trade_history_apartment_id ON trade_history (apartment_id);
 CREATE INDEX idx_trade_history_trade_date ON trade_history (trade_date);
+CREATE UNIQUE INDEX idx_trade_history_unique ON trade_history (apartment_id, trade_date, price, floor, area, trade_type);
 CREATE INDEX idx_favorites_user_apartment ON favorites (user_id, apartment_id);
