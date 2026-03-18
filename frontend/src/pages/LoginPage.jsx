@@ -1,36 +1,52 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { login } from '../api/auth';
+import { login, resendVerification } from '../api/auth';
 import useAuthStore from '../stores/useAuthStore';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [needVerification, setNeedVerification] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
   const navigate = useNavigate();
   const authLogin = useAuthStore((s) => s.login);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNeedVerification(false);
+    setResendMsg('');
 
     if (!email || !password) {
-      setError('이메일과 비밀번호를 입력해주세요.');
+      setError('아이디와 비밀번호를 입력해주세요.');
       return;
     }
 
     setIsLoading(true);
     try {
       const data = await login({ email, password });
-      authLogin(data.user, data.accessToken);
+      authLogin(data.user);
       navigate('/');
     } catch (err) {
-      setError(
-        err.response?.data?.error || '로그인에 실패했습니다. 다시 시도해주세요.'
-      );
+      const resp = err.response?.data;
+      if (resp?.needVerification) {
+        setNeedVerification(true);
+      }
+      setError(resp?.error || '로그인에 실패했습니다.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendMsg('');
+    try {
+      await resendVerification(email);
+      setResendMsg('인증 메일이 재발송되었습니다. 메일함을 확인해주세요.');
+    } catch (err) {
+      setResendMsg(err.response?.data?.error || '재발송에 실패했습니다.');
     }
   };
 
@@ -38,7 +54,6 @@ export default function LoginPage() {
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          {/* Header */}
           <div className="text-center mb-8">
             <div className="w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
               <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -46,64 +61,52 @@ export default function LoginPage() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">로그인</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              아파트 시세 서비스에 오신 것을 환영합니다
-            </p>
+            <p className="text-sm text-gray-500 mt-1">아파트 시세 서비스에 오신 것을 환영합니다</p>
+
+            {error && (
+              <div className={`mt-4 p-3 rounded-lg border text-left ${needVerification ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>
+                <p className={`text-sm ${needVerification ? 'text-yellow-700' : 'text-red-600'}`}>{error}</p>
+                {needVerification && (
+                  <div className="mt-2">
+                    <button onClick={handleResend}
+                      className="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                      인증 메일 다시 보내기
+                    </button>
+                    {resendMsg && <p className="text-xs text-green-600 mt-1">{resendMsg}</p>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                이메일
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@email.com"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">아이디</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="이메일을 입력하세요"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all" />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                비밀번호
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">비밀번호</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 placeholder="비밀번호를 입력하세요"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all"
-              />
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 transition-all" />
             </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white rounded-lg font-medium text-sm transition-colors"
-            >
+            <button type="submit" disabled={isLoading}
+              className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white rounded-lg font-medium text-sm transition-colors">
               {isLoading ? '로그인 중...' : '로그인'}
             </button>
           </form>
 
-          {/* Register Link */}
-          <p className="text-center text-sm text-gray-500 mt-6">
+          <div className="flex justify-center gap-4 mt-5 text-sm">
+            <Link to="/find-id" className="text-gray-500 hover:text-gray-700">아이디 찾기</Link>
+            <span className="text-gray-300">|</span>
+            <Link to="/forgot-password" className="text-gray-500 hover:text-gray-700">비밀번호 재설정</Link>
+          </div>
+
+          <p className="text-center text-sm text-gray-500 mt-4">
             계정이 없으신가요?{' '}
-            <Link
-              to="/register"
-              className="text-primary-600 hover:text-primary-700 font-medium"
-            >
-              회원가입
-            </Link>
+            <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">회원가입</Link>
           </p>
         </div>
       </div>

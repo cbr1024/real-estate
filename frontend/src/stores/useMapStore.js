@@ -17,6 +17,10 @@ const useMapStore = create((set) => ({
 
   setBounds: (bounds) => set({ bounds }),
 
+  selectedApartment: null,
+
+  setSelectedApartment: (apt) => set({ selectedApartment: apt }),
+
   setFilters: (filters) =>
     set((state) => ({
       filters: { ...state.filters, ...filters },

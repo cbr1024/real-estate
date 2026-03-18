@@ -5,6 +5,10 @@ import DetailPage from './pages/DetailPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import FavoritesPage from './pages/FavoritesPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import FindEmailPage from './pages/FindEmailPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 function App() {
   return (
@@ -17,6 +21,10 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/find-id" element={<FindEmailPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Routes>
       </main>
     </div>

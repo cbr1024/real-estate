@@ -28,9 +28,13 @@ CREATE TABLE trade_history (
 -- Users table
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     nickname VARCHAR(50),
+    email_verified BOOLEAN DEFAULT FALSE,
+    verify_token VARCHAR(255),
+    verify_token_expires TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

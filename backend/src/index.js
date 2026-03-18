@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const http = require('http');
 
@@ -16,15 +17,24 @@ const { initCronJobs } = require('./services/cronJobs');
 const app = express();
 const server = http.createServer(app);
 
-// Middleware
-app.use(cors());
+// Nginx 프록시 뒤에서 실제 IP 인식
+app.set('trust proxy', 1);
+
+// CORS — 허용 도메인 제한 + 쿠키 전송 허용
+app.use(cors({
+  origin: process.env.APP_URL || 'http://localhost',
+  credentials: true,
+}));
+
 app.use(helmet());
 app.use(morgan('combined'));
 app.use(express.json());
+app.use(cookieParser());
 
+// 전체 API Rate Limit
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
 });

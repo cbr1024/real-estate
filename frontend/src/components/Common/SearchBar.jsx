@@ -13,6 +13,7 @@ export default function SearchBar() {
   const navigate = useNavigate();
   const setCenter = useMapStore((s) => s.setCenter);
   const setZoom = useMapStore((s) => s.setZoom);
+  const setSelectedApartment = useMapStore((s) => s.setSelectedApartment);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -58,8 +59,12 @@ export default function SearchBar() {
     setIsOpen(false);
 
     if (apartment.latitude && apartment.longitude) {
-      setCenter({ lat: apartment.latitude, lng: apartment.longitude });
-      setZoom(16);
+      setCenter({
+        lat: parseFloat(apartment.latitude),
+        lng: parseFloat(apartment.longitude),
+      });
+      setZoom(17);
+      setSelectedApartment(apartment);
       navigate('/');
     } else {
       navigate(`/apartment/${apartment.id}`);
