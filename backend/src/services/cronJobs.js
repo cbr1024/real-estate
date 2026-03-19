@@ -3,7 +3,7 @@ const pool = require('../config/database');
 const { syncTradeData } = require('./dataSync');
 const { checkPriceAlerts } = require('./alertChecker');
 const { scrapePolicy } = require('./policyScraper');
-const { scrapeSeoulAuctions } = require('./auctionScraper');
+const axios = require('axios');
 
 function initCronJobs() {
   // Daily at 2:00 AM - sync trade data from 국토부 실거래가 API
@@ -39,14 +39,24 @@ function initCronJobs() {
     }
   });
 
-  // Daily at 4:00 AM - scrape Seoul apartment auction data
+  // Daily at 4:00 AM - trigger auction crawl via Python backoffice
   cron.schedule('0 4 * * *', async () => {
-    console.log('Scraping Seoul apartment auctions...');
+    console.log('Triggering auction crawl via Python server...');
     try {
-      const result = await scrapeSeoulAuctions();
-      console.log('Auction scrape completed:', result);
+      const result = await axios.post('http://python-server:8000/api/crawl/auction', {}, { timeout: 10000 });
+      console.log('Auction crawl triggered:', result.data);
     } catch (err) {
-      console.error('Auction scrape failed:', err);
+      console.error('Auction crawl trigger failed:', err.message);
+      // 5시에 재시도
+      setTimeout(async () => {
+        console.log('Retrying auction crawl...');
+        try {
+          const retry = await axios.post('http://python-server:8000/api/crawl/auction', {}, { timeout: 10000 });
+          console.log('Auction crawl retry triggered:', retry.data);
+        } catch (retryErr) {
+          console.error('Auction crawl retry failed:', retryErr.message);
+        }
+      }, 60 * 60 * 1000);
     }
   });
 

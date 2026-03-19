@@ -5,6 +5,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from src.routes.analysis import router as analysis_router
+from src.routes.auction import router as auction_router
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(analysis_router)
+app.include_router(auction_router)
 
 
 @app.get("/health")
