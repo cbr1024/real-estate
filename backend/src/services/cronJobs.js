@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const pool = require('../config/database');
-const { syncTradeData } = require('./dataSync');
+const { syncTradeData, syncCommercialData } = require('./dataSync');
 const { checkPriceAlerts } = require('./alertChecker');
 const { scrapePolicy } = require('./policyScraper');
 const axios = require('axios');
@@ -14,6 +14,17 @@ function initCronJobs() {
       console.log('Daily sync completed:', result);
     } catch (err) {
       console.error('Daily sync failed:', err);
+    }
+  });
+
+  // Daily at 2:30 AM - sync commercial/officetel trade data
+  cron.schedule('30 2 * * *', async () => {
+    console.log('Starting commercial data sync...');
+    try {
+      const result = await syncCommercialData();
+      console.log('Commercial sync completed:', result);
+    } catch (err) {
+      console.error('Commercial sync failed:', err);
     }
   });
 

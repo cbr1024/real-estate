@@ -21,6 +21,7 @@ import CommunityDetailPage from './pages/CommunityDetailPage';
 import DiscussionsPage from './pages/DiscussionsPage';
 import ColumnsPage from './pages/ColumnsPage';
 import AuctionPage from './pages/AuctionPage';
+import CommercialPage from './pages/CommercialPage';
 
 function App() {
   useEffect(() => {
@@ -54,6 +55,7 @@ function App() {
           <Route path="/discussions" element={<DiscussionsPage />} />
           <Route path="/columns" element={<ColumnsPage />} />
           <Route path="/auctions" element={<AuctionPage />} />
+          <Route path="/commercial" element={<CommercialPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
         </Routes>
       </main>

@@ -24,6 +24,7 @@ const communityRouter = require('./routes/community');
 const discussionsRouter = require('./routes/discussions');
 const columnsRouter = require('./routes/columns');
 const auctionsRouter = require('./routes/auctions');
+const commercialRouter = require('./routes/commercial');
 const setupWebSocket = require('./websocket');
 const { initCronJobs } = require('./services/cronJobs');
 
@@ -88,6 +89,7 @@ app.use('/api/community', communityRouter);
 app.use('/api/discussions', discussionsRouter);
 app.use('/api/columns', columnsRouter);
 app.use('/api/auctions', auctionsRouter);
+app.use('/api/commercial', commercialRouter);
 
 // WebSocket
 setupWebSocket(server);

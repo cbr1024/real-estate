@@ -336,3 +336,39 @@ CREATE INDEX idx_auction_apartment ON auction_items (apartment_id);
 CREATE INDEX idx_auction_date ON auction_items (auction_date DESC);
 CREATE INDEX idx_auction_status ON auction_items (status);
 CREATE INDEX idx_auction_address ON auction_items (address);
+
+-- Commercial properties
+CREATE TABLE commercial_properties (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    property_type VARCHAR(20) NOT NULL DEFAULT 'commercial',
+    address VARCHAR(500),
+    road_address VARCHAR(500),
+    lat NUMERIC(10, 7),
+    lng NUMERIC(10, 7),
+    build_year INTEGER,
+    total_area NUMERIC(10, 2),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_commercial_name ON commercial_properties (name);
+CREATE INDEX idx_commercial_lat_lng ON commercial_properties (lat, lng);
+CREATE INDEX idx_commercial_type ON commercial_properties (property_type);
+
+CREATE TABLE commercial_trade_history (
+    id SERIAL PRIMARY KEY,
+    property_id INTEGER REFERENCES commercial_properties(id),
+    trade_date DATE NOT NULL,
+    price BIGINT NOT NULL,
+    floor INTEGER,
+    area NUMERIC(10, 2),
+    trade_type VARCHAR(10) DEFAULT 'sale',
+    property_type VARCHAR(20) DEFAULT 'commercial',
+    dong VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_comm_trade_property ON commercial_trade_history (property_id);
+CREATE INDEX idx_comm_trade_date ON commercial_trade_history (trade_date);
+CREATE INDEX idx_comm_trade_type ON commercial_trade_history (property_type);
+CREATE UNIQUE INDEX idx_comm_trade_unique ON commercial_trade_history (property_id, trade_date, price, floor, area, trade_type);

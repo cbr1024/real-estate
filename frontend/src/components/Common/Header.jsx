@@ -99,6 +99,9 @@ export default function Header() {
               <Link to="/columns" className="block px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                 전문가 칼럼
               </Link>
+              <Link to="/commercial" className="block px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+                상가/오피스텔
+              </Link>
               <Link to="/auctions" className="flex items-center gap-1.5 px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                 경매 정보 <span className="text-[9px] text-violet-400 font-bold">PRO</span>
               </Link>
