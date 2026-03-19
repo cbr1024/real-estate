@@ -15,6 +15,7 @@ const PLAN_FEATURES = {
     { label: '학군 정보', included: false, highlight: true },
     { label: '단지 비교', included: false },
     { label: '정책 발표 열람', included: false },
+    { label: '경매 정보', included: false },
     { label: '학군 · 교통 오버레이', included: false },
   ],
   basic: [
@@ -26,6 +27,7 @@ const PLAN_FEATURES = {
     { label: '학군 정보 · 학교 오버레이', included: true, highlight: true },
     { label: '단지 비교 (2개)', included: true },
     { label: '정책 발표 열람', included: true },
+    { label: '경매 정보', included: false },
     { label: '교통 오버레이', included: false },
   ],
   pro: [
@@ -37,6 +39,7 @@ const PLAN_FEATURES = {
     { label: '학군 정보 · 학교 오버레이', included: true, highlight: true },
     { label: '단지 비교 (3개)', included: true },
     { label: '정책 발표 열람', included: true },
+    { label: '경매 정보 (서울)', included: true, highlight: true },
     { label: '교통 오버레이', included: true },
   ],
 };

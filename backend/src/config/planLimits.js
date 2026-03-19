@@ -9,6 +9,7 @@ const PLAN_LIMITS = {
     policy: false,
     overlay: false,
     schoolInfo: false,
+    auction: false,
   },
   basic: {
     favorites: 30,
@@ -20,6 +21,7 @@ const PLAN_LIMITS = {
     overlay: false,
     schoolOverlay: true,
     schoolInfo: true,
+    auction: false,
   },
   pro: {
     favorites: Infinity,
@@ -30,6 +32,7 @@ const PLAN_LIMITS = {
     policy: true,
     overlay: true,
     schoolInfo: true,
+    auction: true,
   },
 };
 

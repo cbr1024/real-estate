@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const { syncTradeData } = require('./dataSync');
 const { checkPriceAlerts } = require('./alertChecker');
 const { scrapePolicy } = require('./policyScraper');
+const { scrapeSeoulAuctions } = require('./auctionScraper');
 
 function initCronJobs() {
   // Daily at 2:00 AM - sync trade data from 국토부 실거래가 API
@@ -35,6 +36,17 @@ function initCronJobs() {
       console.log('Policy scrape completed:', result);
     } catch (err) {
       console.error('Policy scrape failed:', err);
+    }
+  });
+
+  // Daily at 4:00 AM - scrape Seoul apartment auction data
+  cron.schedule('0 4 * * *', async () => {
+    console.log('Scraping Seoul apartment auctions...');
+    try {
+      const result = await scrapeSeoulAuctions();
+      console.log('Auction scrape completed:', result);
+    } catch (err) {
+      console.error('Auction scrape failed:', err);
     }
   });
 

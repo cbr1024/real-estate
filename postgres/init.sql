@@ -307,3 +307,32 @@ CREATE TABLE expert_columns (
 
 CREATE INDEX idx_expert_columns_published ON expert_columns (published_at DESC);
 CREATE INDEX idx_expert_columns_category ON expert_columns (category);
+
+-- Auction items
+CREATE TABLE auction_items (
+    id SERIAL PRIMARY KEY,
+    case_number VARCHAR(50) NOT NULL,
+    court_name VARCHAR(50) NOT NULL,
+    apartment_id INTEGER REFERENCES apartments(id) ON DELETE SET NULL,
+    address VARCHAR(500),
+    detail_address VARCHAR(200),
+    area NUMERIC(10, 2),
+    floor INTEGER,
+    appraisal_value BIGINT,
+    minimum_price BIGINT,
+    auction_date DATE,
+    fail_count INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'scheduled',
+    bid_count INTEGER,
+    winning_price BIGINT,
+    note TEXT,
+    court_url TEXT,
+    fetched_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(case_number)
+);
+
+CREATE INDEX idx_auction_apartment ON auction_items (apartment_id);
+CREATE INDEX idx_auction_date ON auction_items (auction_date DESC);
+CREATE INDEX idx_auction_status ON auction_items (status);
+CREATE INDEX idx_auction_address ON auction_items (address);
