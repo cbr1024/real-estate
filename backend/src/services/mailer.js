@@ -35,9 +35,9 @@ async function sendVerificationEmail(to, token) {
   }
 
   await t.sendMail({
-    from: `"아파트 시세" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    from: `"시세통" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to,
-    subject: '[아파트 시세] 이메일 인증을 완료해주세요',
+    subject: '[시세통] 이메일 인증을 완료해주세요',
     html: `
       <div style="max-width:480px;margin:0 auto;font-family:-apple-system,'Noto Sans KR',sans-serif;">
         <div style="padding:32px 24px;background:#2563eb;border-radius:12px 12px 0 0;text-align:center;">
@@ -45,7 +45,7 @@ async function sendVerificationEmail(to, token) {
         </div>
         <div style="padding:32px 24px;background:white;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
           <p style="color:#333;font-size:15px;line-height:1.6;">
-            안녕하세요! 아파트 시세 서비스에 가입해주셔서 감사합니다.
+            안녕하세요! 시세통에 가입해주셔서 감사합니다.
           </p>
           <p style="color:#333;font-size:15px;line-height:1.6;">
             아래 버튼을 클릭하여 이메일 인증을 완료해주세요.
@@ -79,9 +79,9 @@ async function sendPasswordResetEmail(to, token) {
   }
 
   await t.sendMail({
-    from: `"아파트 시세" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    from: `"시세통" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to,
-    subject: '[아파트 시세] 비밀번호 재설정',
+    subject: '[시세통] 비밀번호 재설정',
     html: `
       <div style="max-width:480px;margin:0 auto;font-family:-apple-system,'Noto Sans KR',sans-serif;">
         <div style="padding:32px 24px;background:#2563eb;border-radius:12px 12px 0 0;text-align:center;">
@@ -133,7 +133,7 @@ async function sendAlertEmail(to, { nickname, apartmentName, price, area, floor,
   }
 
   await t.sendMail({
-    from: `"아파트 시세" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    from: `"시세통" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to,
     subject: `[시세 알림] ${apartmentName} 새 거래 발생 - ${priceStr}`,
     html: `

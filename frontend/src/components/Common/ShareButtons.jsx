@@ -29,7 +29,7 @@ export default function ShareButtons({ title, url }) {
         objectType: 'feed',
         content: {
           title: shareTitle,
-          description: '아파트 시세 정보를 확인해보세요',
+          description: '시세통에서 시세를 확인해보세요',
           imageUrl: '',
           link: { mobileWebUrl: shareUrl, webUrl: shareUrl },
         },

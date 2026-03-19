@@ -54,8 +54,8 @@ export default function Header() {
             </svg>
           </div>
           <div className="hidden sm:block">
-            <span className="text-[17px] font-extrabold text-white tracking-tight">아파트 시세</span>
-            <span className="text-[10px] text-blue-400 font-medium ml-1.5 hidden lg:inline">REAL ESTATE</span>
+            <span className="text-[17px] font-extrabold text-white tracking-tight">시세통</span>
+            <span className="text-[10px] text-blue-400 font-medium ml-1.5 hidden lg:inline">시세를 통째로</span>
           </div>
         </Link>
 

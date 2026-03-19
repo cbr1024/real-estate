@@ -61,7 +61,7 @@ export default function LoginPage() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">로그인</h1>
-            <p className="text-sm text-gray-500 mt-1">아파트 시세 서비스에 오신 것을 환영합니다</p>
+            <p className="text-sm text-gray-500 mt-1">시세통에 오신 것을 환영합니다</p>
 
             {error && (
               <div className={`mt-4 p-3 rounded-lg border text-left ${needVerification ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>

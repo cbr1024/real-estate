@@ -10,8 +10,8 @@ from src.routes.auction import router as auction_router
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
-    title="Real Estate Analysis Server",
-    description="아파트 시세 분석 백오피스 API",
+    title="시세통 Analysis Server",
+    description="시세통 분석 백오피스 API",
     version="1.0.0",
 )
 
@@ -38,7 +38,7 @@ def health_check():
 @app.get("/")
 def root():
     return {
-        "service": "Real Estate Analysis Server",
+        "service": "시세통 Analysis Server",
         "version": "1.0.0",
-        "description": "아파트 시세 분석 API",
+        "description": "시세통 분석 API",
     }
