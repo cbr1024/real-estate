@@ -35,8 +35,8 @@ function formatPrice(value) {
 export default function PriceChart({ trades = [], title = '거래가 추이' }) {
   if (!trades.length) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">{title}</h3>
+      <div className={title ? 'bg-white rounded-xl border border-gray-200 p-6' : ''}>
+        {title && <h3 className="text-lg font-bold text-gray-800 mb-4">{title}</h3>}
         <p className="text-gray-400 text-center py-8">거래 데이터가 없습니다</p>
       </div>
     );
@@ -106,8 +106,8 @@ export default function PriceChart({ trades = [], title = '거래가 추이' }) 
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h3 className="text-lg font-bold text-gray-800 mb-4">{title}</h3>
+    <div className={title ? 'bg-white rounded-xl border border-gray-200 p-6' : ''}>
+      {title && <h3 className="text-lg font-bold text-gray-800 mb-4">{title}</h3>}
       <div className="h-64">
         <Line data={data} options={options} />
       </div>

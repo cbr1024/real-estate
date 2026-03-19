@@ -5,7 +5,9 @@ import NaverMap from '../components/Map/NaverMap';
 import MapFilter from '../components/Map/MapFilter';
 import LoadingSpinner from '../components/Common/LoadingSpinner';
 import useMapStore from '../stores/useMapStore';
+import useAuthStore from '../stores/useAuthStore';
 import { getApartmentsByBounds } from '../api/apartments';
+import { getFavorites } from '../api/favorites';
 
 function formatPrice(price) {
   if (!price) return '-';
@@ -29,29 +31,46 @@ function formatArea(area) {
 const SORT_OPTIONS = [
   { key: 'price_desc', label: '높은가격순' },
   { key: 'price_asc', label: '낮은가격순' },
-  { key: 'area_desc', label: '넓은면적순' },
-  { key: 'area_asc', label: '좁은면적순' },
   { key: 'trade_desc', label: '거래많은순' },
   { key: 'name_asc', label: '이름순' },
 ];
 
 export default function MapPage() {
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  // 모바일은 기본 닫힘, PC는 기본 열림
+  const [isPanelOpen, setIsPanelOpen] = useState(() => window.innerWidth >= 768);
   const [sortKey, setSortKey] = useState('price_desc');
   const panelRef = useRef(null);
   const { bounds, filters, selectedApartment } = useMapStore();
+  const { isAuthenticated } = useAuthStore();
+
+  const { data: favorites } = useQuery({
+    queryKey: ['favorites'],
+    queryFn: getFavorites,
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+  });
+
+  const favoriteIds = new Set((favorites || []).map((f) => String(f.id)));
 
   const { data: apiResponse, isLoading } = useQuery({
     queryKey: ['apartments', bounds, filters],
     queryFn: () => {
       if (!bounds) return { totalCount: 0, items: [] };
-      return getApartmentsByBounds(bounds, {
+      const params = {
         tradeType: filters.tradeType,
         minPrice: filters.priceRange[0],
         maxPrice: filters.priceRange[1],
         minArea: filters.areaRange[0],
         maxArea: filters.areaRange[1],
-      });
+      };
+      // Pro filters
+      if (filters.buildYearRange[0] > 0) params.minBuildYear = filters.buildYearRange[0];
+      if (filters.buildYearRange[1] > 0) params.maxBuildYear = filters.buildYearRange[1];
+      if (filters.floorRange[0] > 0) params.minFloor = filters.floorRange[0];
+      if (filters.floorRange[1] > 0) params.maxFloor = filters.floorRange[1];
+      if (filters.minUnits > 0) params.minUnits = filters.minUnits;
+      if (filters.minTradeCount > 0) params.minTradeCount = filters.minTradeCount;
+      return getApartmentsByBounds(bounds, params);
     },
     enabled: !!bounds,
     staleTime: 10 * 1000,
@@ -92,21 +111,30 @@ export default function MapPage() {
         <MapFilter />
       </div>
 
-      {/* 토글 버튼 */}
-      <button
-        onClick={() => setIsPanelOpen(!isPanelOpen)}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg px-5 py-2.5 flex items-center gap-2 hover:bg-white transition-colors border border-gray-200/80 z-30 md:hidden"
-      >
-        <svg
-          className={`w-4 h-4 text-gray-600 transition-transform ${isPanelOpen ? 'rotate-180' : ''}`}
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      {/* 모바일: 패널 열렸을 때 배경 오버레이 */}
+      {isPanelOpen && (
+        <div
+          className="absolute inset-0 bg-black/20 z-10 md:hidden"
+          onClick={() => setIsPanelOpen(false)}
+        />
+      )}
+
+      {/* 모바일: 오른쪽 상단 목록 아이콘 (패널 닫혀있을 때만) */}
+      {!isPanelOpen && (
+        <button
+          onClick={() => setIsPanelOpen(true)}
+          className="absolute top-4 right-4 z-30 md:hidden bg-white/40 backdrop-blur-md rounded-xl shadow-lg w-11 h-11 flex items-center justify-center border border-white/30 hover:bg-white/65 transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-        </svg>
-        <span className="text-sm font-medium text-gray-700">
-          {totalCount ? `${totalCount.toLocaleString()}개 아파트` : '아파트 목록'}
-        </span>
-      </button>
+          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+          {totalCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-primary-600 text-white text-[10px] font-bold min-w-[20px] h-5 flex items-center justify-center rounded-full px-1">
+              {totalCount > 99 ? '99+' : totalCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* 반투명 카드 패널 (지도 위 오버레이) */}
       <div
@@ -114,17 +142,18 @@ export default function MapPage() {
         onWheel={handleWheel}
         className={`
           absolute right-0 top-0 h-full z-20
-          w-full md:w-[380px]
+          w-[85%] max-w-[380px]
           transition-transform duration-300 ease-in-out
           ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}
+          bg-gray-100/40 backdrop-blur-md md:bg-transparent md:backdrop-blur-none
         `}
-        style={{ pointerEvents: 'auto' }}
+        style={{ pointerEvents: isPanelOpen ? 'auto' : 'none' }}
       >
         <div className="h-full flex flex-col">
 
           {/* 헤더 */}
           <div className="flex-shrink-0 px-3 pt-3 pb-2">
-            <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2.5 shadow-sm border border-white/60">
+            <div className="bg-white/45 backdrop-blur-md rounded-xl px-3 py-2.5 shadow-sm border border-white/30">
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <h2 className="text-sm font-bold text-gray-900">아파트 목록</h2>
@@ -132,7 +161,7 @@ export default function MapPage() {
                 </div>
                 <button
                   onClick={() => setIsPanelOpen(false)}
-                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors md:hidden"
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -178,7 +207,7 @@ export default function MapPage() {
                         <span className="text-[11px] font-semibold text-primary-600">검색 결과</span>
                       </div>
                       <Link to={`/apartment/${apt.id}`}
-                        className="block bg-white/90 backdrop-blur-sm rounded-xl p-4 border border-primary-200/80 shadow-md hover:shadow-lg transition-all hover:bg-white">
+                        className="block bg-white/45 backdrop-blur-md rounded-xl p-4 border border-primary-200/30 shadow-md hover:shadow-lg transition-all hover:bg-white/65">
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
                             <h3 className="text-[15px] font-bold text-gray-900 truncate">{apt.name}</h3>
@@ -189,7 +218,14 @@ export default function MapPage() {
                               {apt.tradeCount > 0 && <span className="text-[11px] text-gray-400">거래 {apt.tradeCount}건</span>}
                             </div>
                           </div>
-                          <p className="text-lg font-extrabold text-primary-600 ml-3">{formatPrice(apt.latestPrice)}</p>
+                          <div className="flex flex-col items-end ml-3">
+                            <p className="text-lg font-extrabold text-primary-600">{formatPrice(apt.latestPrice)}</p>
+                            {favoriteIds.has(String(apt.id)) && (
+                              <svg className="w-4 h-4 text-red-500 mt-1" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                              </svg>
+                            )}
+                          </div>
                         </div>
                       </Link>
                     </div>
@@ -213,7 +249,7 @@ export default function MapPage() {
                     <Link
                       key={apt.id}
                       to={`/apartment/${apt.id}`}
-                      className="block bg-white/85 backdrop-blur-sm rounded-xl px-4 py-3 hover:bg-white transition-all hover:shadow-md border border-white/60 shadow-sm"
+                      className="block bg-white/40 backdrop-blur-md rounded-xl px-4 py-3 hover:bg-white/65 transition-all hover:shadow-md border border-white/30 shadow-sm"
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0">
@@ -225,7 +261,14 @@ export default function MapPage() {
                             {apt.tradeCount > 0 && <span className="text-[11px] text-gray-400">거래 {apt.tradeCount}건</span>}
                           </div>
                         </div>
-                        <p className="text-sm font-bold text-primary-600 ml-3 flex-shrink-0">{formatPrice(apt.latestPrice)}</p>
+                        <div className="flex flex-col items-end ml-3 flex-shrink-0">
+                          <p className="text-sm font-bold text-primary-600">{formatPrice(apt.latestPrice)}</p>
+                          {favoriteIds.has(String(apt.id)) && (
+                            <svg className="w-3.5 h-3.5 text-red-500 mt-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                          )}
+                        </div>
                       </div>
                     </Link>
                   );
@@ -255,7 +298,7 @@ export default function MapPage() {
         className={`
           hidden md:flex absolute top-1/2 -translate-y-1/2 z-30
           w-6 h-16 items-center justify-center
-          bg-white/85 backdrop-blur-sm rounded-l-lg shadow-md border border-r-0 border-gray-200/60
+          bg-white/40 backdrop-blur-md rounded-l-lg shadow-md border border-r-0 border-white/30
           hover:bg-white transition-all
           ${isPanelOpen ? 'right-[380px]' : 'right-0'}
         `}

@@ -27,6 +27,16 @@ export const getAnalysis = async (id) => {
   return response.data;
 };
 
+export const compareApartments = async (ids, tradeType = 'sale') => {
+  const response = await client.get('/apartments/compare', { params: { ids: ids.join(','), tradeType } });
+  return response.data;
+};
+
+export const getApartmentStats = async (id, months) => {
+  const response = await client.get(`/apartments/${id}/stats`, { params: { months } });
+  return response.data;
+};
+
 export const searchApartments = async (query) => {
   const response = await client.get('/apartments/search', {
     params: { q: query },

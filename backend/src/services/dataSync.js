@@ -1,17 +1,22 @@
 const axios = require('axios');
-const xml2js = require('xml2js');
 const pool = require('../config/database');
 const { geocodeAddress } = require('./geocoding');
 
-const parser = new xml2js.Parser({ explicitArray: false });
-
-// 국토부 API 엔드포인트 (data.go.kr HTTPS)
+// 국토부 API 엔드포인트
 const API_ENDPOINTS = {
   sale: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev',
   rent: 'https://apis.data.go.kr/1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent',
 };
 
-// 법정동 코드 → 시/구 매핑 (주소 조합용)
+// 서울 25개 구 법정동 코드
+const SEOUL_LAWD_CODES = [
+  '11110', '11140', '11170', '11200', '11215',
+  '11230', '11260', '11290', '11305', '11320',
+  '11350', '11380', '11410', '11440', '11470',
+  '11500', '11530', '11545', '11560', '11590',
+  '11620', '11650', '11680', '11710', '11740',
+];
+
 const LAWD_MAP = {
   '11110': '서울특별시 종로구', '11140': '서울특별시 중구',
   '11170': '서울특별시 용산구', '11200': '서울특별시 성동구',
@@ -28,6 +33,8 @@ const LAWD_MAP = {
   '11740': '서울특별시 강동구',
 };
 
+// 지오코딩 한도는 geocoding.js 내부에서 Redis 기반으로 체크됨
+
 async function findOrCreateApartment(aptName, item, lawdCd) {
   // 기존 아파트 검색
   const existing = await pool.query(
@@ -36,7 +43,7 @@ async function findOrCreateApartment(aptName, item, lawdCd) {
   );
 
   if (existing.rows.length > 0) {
-    return existing.rows[0].id;
+    return { id: existing.rows[0].id, isNew: false };
   }
 
   // 주소 조합
@@ -46,28 +53,20 @@ async function findOrCreateApartment(aptName, item, lawdCd) {
   const address = `${sigu} ${dong} ${jibun}`.trim();
   const buildYear = parseInt(String(item['건축년도'] || '0'), 10) || null;
 
-  // 지오코딩으로 좌표 획득 (지번 주소로 검색)
-  const geocodeQuery = address; // "서울특별시 강남구 대치동 316" 형식
-  const geo = await geocodeAddress(geocodeQuery);
+  // 지오코딩 (일일 한도는 geocoding.js에서 Redis로 체크)
+  const geo = await geocodeAddress(address);
 
   const result = await pool.query(
     `INSERT INTO apartments (name, address, road_address, lat, lng, build_year, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())
      RETURNING id`,
-    [
-      aptName,
-      address,
-      geo?.roadAddress || null,
-      geo?.lat || null,
-      geo?.lng || null,
-      buildYear,
-    ]
+    [aptName, address, geo?.roadAddress || null, geo?.lat || null, geo?.lng || null, buildYear]
   );
 
   const status = geo ? '좌표 OK' : '좌표 없음';
   console.log(`  [NEW] ${aptName} (${address}) - ${status}`);
 
-  return result.rows[0].id;
+  return { id: result.rows[0].id, isNew: true };
 }
 
 async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType }) {
@@ -77,10 +76,8 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
   let newApartments = 0;
 
   try {
-    // 페이지별 전체 수집
     let pageNo = 1;
     const numOfRows = 1000;
-    let totalCount = 0;
     let allItems = [];
 
     while (true) {
@@ -98,17 +95,16 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
       const data = response.data;
       const header = data?.response?.header;
       if (header && header.resultCode !== '000') {
-        console.error(`API error [${tradeType}] lawdCd ${lawdCd}: ${header.resultMsg || 'Unknown'} (code: ${header.resultCode})`);
+        console.error(`API error [${tradeType}] ${lawdCd}: ${header.resultMsg || 'Unknown'} (${header.resultCode})`);
         return { inserted, skipped, errors: 1, newApartments };
       }
 
       const body = data?.response?.body;
       if (!body || !body.items || !body.items.item) {
-        if (pageNo === 1) console.log(`No data [${tradeType}] lawdCd: ${lawdCd}`);
         break;
       }
 
-      totalCount = parseInt(body.totalCount || '0', 10);
+      const totalCount = parseInt(body.totalCount || '0', 10);
       let items = body.items.item;
       if (!Array.isArray(items)) items = [items];
       allItems = allItems.concat(items);
@@ -121,7 +117,7 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
       return { inserted, skipped, errors, newApartments };
     }
 
-    console.log(`  [${tradeType}] ${lawdCd}: ${allItems.length}건 처리중...`);
+    console.log(`  [${tradeType}] ${LAWD_MAP[lawdCd] || lawdCd}: ${allItems.length}건`);
 
     for (const item of allItems) {
       try {
@@ -135,22 +131,18 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
         const buildYear = parseInt(item.buildYear || item['건축년도'] || '0', 10);
         const jibun = String(item.jibun || item['지번'] || '').trim();
 
-        // API 필드명 통일 (JSON 응답용)
-        const itemNormalized = { ...item, '아파트': aptName, '법정동': dong, '건축년도': buildYear, '지번': jibun };
+        const itemNormalized = { '법정동': dong, '건축년도': buildYear, '지번': jibun };
 
         let price;
         if (tradeType === 'sale') {
-          const raw = String(item.dealAmount || item['거래금액'] || '0');
-          price = parseInt(raw.replace(/,/g, '').trim(), 10);
+          price = parseInt(String(item.dealAmount || item['거래금액'] || '0').replace(/,/g, '').trim(), 10);
         } else {
-          const raw = String(item.deposit || item['보증금액'] || item['보증금'] || '0');
-          price = parseInt(raw.replace(/,/g, '').trim(), 10);
+          price = parseInt(String(item.deposit || item['보증금액'] || item['보증금'] || '0').replace(/,/g, '').trim(), 10);
         }
 
         let actualTradeType = tradeType;
         if (tradeType === 'rent') {
-          const rawRent = String(item.monthlyRent || item['월세금액'] || item['월세'] || '0');
-          const monthlyRent = parseInt(rawRent.replace(/,/g, '').trim(), 10);
+          const monthlyRent = parseInt(String(item.monthlyRent || item['월세금액'] || item['월세'] || '0').replace(/,/g, '').trim(), 10);
           actualTradeType = monthlyRent > 0 ? 'monthly' : 'jeonse';
         }
 
@@ -165,43 +157,28 @@ async function fetchAndInsert({ serviceKey, baseUrl, lawdCd, dealYmd, tradeType 
           continue;
         }
 
-        // 아파트 자동 등록 (없으면 생성)
-        const prevCount = await pool.query('SELECT COUNT(*) FROM apartments');
-        const apartmentId = await findOrCreateApartment(aptName, itemNormalized, lawdCd);
-        const afterCount = await pool.query('SELECT COUNT(*) FROM apartments');
-        if (parseInt(afterCount.rows[0].count) > parseInt(prevCount.rows[0].count)) {
-          newApartments++;
-        }
+        const { id: apartmentId, isNew } = await findOrCreateApartment(aptName, itemNormalized, lawdCd);
+        if (isNew) newApartments++;
 
         await pool.query(
           `INSERT INTO trade_history
            (apartment_id, trade_date, price, floor, area, trade_type, dong, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
            ON CONFLICT DO NOTHING`,
-          [
-            apartmentId,
-            tradeDate,
-            price,
-            floor,
-            area,
-            actualTradeType,
-            dong,
-          ]
+          [apartmentId, tradeDate, price, floor, area, actualTradeType, dong]
         );
         inserted++;
       } catch (insertErr) {
-        console.error('Error inserting trade record:', insertErr.message);
+        console.error('Insert error:', insertErr.message);
         errors++;
       }
     }
   } catch (fetchErr) {
-    if (fetchErr.code === 'ECONNABORTED') {
-      console.error(`Timeout [${tradeType}] lawdCd ${lawdCd}`);
-    } else if (fetchErr.response?.status === 429) {
-      console.error(`Rate limited [${tradeType}] lawdCd ${lawdCd}. Waiting 60s...`);
-      await new Promise((resolve) => setTimeout(resolve, 60000));
+    if (fetchErr.response?.status === 429) {
+      console.error(`Rate limited [${tradeType}] ${lawdCd}. 60s 대기...`);
+      await new Promise((r) => setTimeout(r, 60000));
     } else {
-      console.error(`Error [${tradeType}] lawdCd ${lawdCd}:`, fetchErr.message);
+      console.error(`Fetch error [${tradeType}] ${lawdCd}:`, fetchErr.message);
     }
     errors++;
   }
@@ -217,15 +194,19 @@ async function syncTradeData(options = {}) {
     return { totalInserted: 0, totalErrors: 0, skipped: true };
   }
 
-  // 수집 대상 월 (기본: 이번 달)
+  // 수집 대상 월 (기본: 이번 달 + 지난 달)
   const now = new Date();
-  const months = options.months || [
-    `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-  ];
+  const thisMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const lastMonth = (() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })();
+  const months = options.months || [lastMonth, thisMonth];
 
+  // 서울 25개 구 전체 (환경변수로 오버라이드 가능)
   const lawdCodes = options.lawdCodes || (process.env.LAWD_CODES
     ? process.env.LAWD_CODES.split(',')
-    : ['11680']); // 기본: 강남구
+    : SEOUL_LAWD_CODES);
 
   let totalInserted = 0;
   let totalSkipped = 0;
@@ -233,16 +214,13 @@ async function syncTradeData(options = {}) {
   let totalNewApartments = 0;
 
   console.log(`=== Data Sync Start ===`);
-  console.log(`지역: ${lawdCodes.length}개, 월: ${months.join(', ')}`);
+  console.log(`지역: ${lawdCodes.length}개 구, 월: ${months.join(', ')}`);
 
   for (const dealYmd of months) {
-    console.log(`\n--- ${dealYmd} 수집 ---`);
+    console.log(`\n--- ${dealYmd} ---`);
 
     for (const lawdCd of lawdCodes) {
-      const area = LAWD_MAP[lawdCd] || lawdCd;
-      console.log(`\n[${area}]`);
-
-      // 매매 데이터
+      // 매매
       const saleResult = await fetchAndInsert({
         serviceKey, baseUrl: API_ENDPOINTS.sale,
         lawdCd, dealYmd, tradeType: 'sale',
@@ -252,7 +230,7 @@ async function syncTradeData(options = {}) {
       totalErrors += saleResult.errors;
       totalNewApartments += saleResult.newApartments;
 
-      // 전월세 데이터
+      // 전월세
       const rentResult = await fetchAndInsert({
         serviceKey, baseUrl: API_ENDPOINTS.rent,
         lawdCd, dealYmd, tradeType: 'rent',
@@ -262,12 +240,12 @@ async function syncTradeData(options = {}) {
       totalErrors += rentResult.errors;
       totalNewApartments += rentResult.newApartments;
 
-      // API 호출 간 딜레이 (rate limit 방지)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // API 호출 간 딜레이 (rate limit 방지: 1초)
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
 
-  // Log sync result
+  // 결과 로그
   const status = totalErrors > 0
     ? (totalInserted > 0 ? 'partial' : 'failed')
     : 'success';
@@ -276,20 +254,15 @@ async function syncTradeData(options = {}) {
     await pool.query(
       `INSERT INTO data_sync_log (api_name, last_sync_at, status, record_count, error_message, created_at)
        VALUES ($1, NOW(), $2, $3, $4, NOW())`,
-      [
-        'trade_data_all',
-        status,
-        totalInserted,
-        totalErrors > 0 ? `${totalErrors} errors, ${totalSkipped} skipped` : null,
-      ]
+      ['trade_data_all', status, totalInserted,
+       totalErrors > 0 ? `${totalErrors} errors, ${totalSkipped} skipped` : null]
     );
   } catch (logErr) {
-    console.error('Error logging sync result:', logErr.message);
+    console.error('Log error:', logErr.message);
   }
 
   console.log(`\n=== Data Sync Complete ===`);
   console.log(`신규 아파트: ${totalNewApartments}, 거래: ${totalInserted} inserted, ${totalSkipped} skipped, ${totalErrors} errors`);
-
   return { totalInserted, totalSkipped, totalErrors, totalNewApartments };
 }
 

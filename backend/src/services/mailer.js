@@ -112,4 +112,58 @@ async function sendPasswordResetEmail(to, token) {
   });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+async function sendAlertEmail(to, { nickname, apartmentName, price, area, floor, tradeDate }) {
+  const t = getTransporter();
+  const appUrl = process.env.APP_URL || 'http://localhost';
+
+  function formatPrice(val) {
+    if (val >= 10000) {
+      const eok = Math.floor(val / 10000);
+      const rem = val % 10000;
+      return rem > 0 ? `${eok}억 ${rem.toLocaleString()}만원` : `${eok}억`;
+    }
+    return `${val.toLocaleString()}만원`;
+  }
+
+  const priceStr = formatPrice(price);
+
+  if (!t) {
+    console.log(`[DEV] Price alert for ${to}: ${apartmentName} - ${priceStr}`);
+    return;
+  }
+
+  await t.sendMail({
+    from: `"아파트 시세" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    to,
+    subject: `[시세 알림] ${apartmentName} 새 거래 발생 - ${priceStr}`,
+    html: `
+      <div style="max-width:480px;margin:0 auto;font-family:-apple-system,'Noto Sans KR',sans-serif;">
+        <div style="padding:32px 24px;background:#2563eb;border-radius:12px 12px 0 0;text-align:center;">
+          <h1 style="color:white;margin:0;font-size:22px;">시세 알림</h1>
+        </div>
+        <div style="padding:32px 24px;background:white;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+          <p style="color:#333;font-size:15px;line-height:1.6;">
+            ${nickname || '회원'}님, 관심 아파트에 새 거래가 등록되었습니다.
+          </p>
+          <div style="background:#f8fafc;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:#1e293b;">${apartmentName}</p>
+            <p style="margin:0;color:#64748b;font-size:14px;">
+              거래가: <strong style="color:#2563eb;">${priceStr}</strong><br>
+              면적: ${area}㎡ (${Math.round(area / 3.306)}평) · ${floor}층<br>
+              거래일: ${tradeDate}
+            </p>
+          </div>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${appUrl}" style="
+              display:inline-block;padding:14px 40px;
+              background:#2563eb;color:white;text-decoration:none;
+              border-radius:8px;font-size:15px;font-weight:600;
+            ">자세히 보기</a>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendAlertEmail };

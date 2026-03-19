@@ -81,7 +81,7 @@ export default function SearchBar() {
     <div ref={wrapperRef} className="relative w-full">
       <div className="relative">
         <svg
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -100,11 +100,11 @@ export default function SearchBar() {
           onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="아파트명, 주소로 검색"
-          className="w-full pl-10 pr-4 py-2 bg-gray-100 border border-transparent rounded-lg text-sm focus:outline-none focus:bg-white focus:border-primary-300 focus:ring-2 focus:ring-primary-100 transition-all"
+          className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-sm text-white placeholder-slate-400 focus:outline-none focus:bg-white/15 focus:border-blue-400/50 focus:ring-2 focus:ring-blue-400/20 transition-all"
         />
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-primary-300 border-t-transparent rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>

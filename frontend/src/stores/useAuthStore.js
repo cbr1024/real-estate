@@ -15,6 +15,12 @@ const useAuthStore = create((set) => ({
   setUser: (user) => {
     set({ user, isAuthenticated: !!user });
   },
+
+  updateSubscription: (subscription) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, subscription } : null,
+    }));
+  },
 }));
 
 export default useAuthStore;

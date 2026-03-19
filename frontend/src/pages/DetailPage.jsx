@@ -1,11 +1,18 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getApartmentDetail, getTradeHistory, getAnalysis } from '../api/apartments';
+import { getApartmentDetail, getTradeHistory, getAnalysis, getApartmentStats } from '../api/apartments';
 import { addFavorite, removeFavorite, getFavorites } from '../api/favorites';
+import { getAlertForApartment, createAlert, deleteAlert } from '../api/alerts';
 import PriceChart from '../components/Chart/PriceChart';
 import AreaCompareChart from '../components/Chart/AreaCompareChart';
+import MonthlyStatsChart from '../components/Chart/MonthlyStatsChart';
 import LoadingSpinner from '../components/Common/LoadingSpinner';
+import ShareButtons from '../components/Common/ShareButtons';
+import SchoolInfo from '../components/School/SchoolInfo';
+import ReviewSection from '../components/Review/ReviewSection';
 import useAuthStore from '../stores/useAuthStore';
+import useCompareStore from '../stores/useCompareStore';
 import dayjs from 'dayjs';
 
 function formatPrice(price) {
@@ -18,11 +25,21 @@ function formatPrice(price) {
   return `${price.toLocaleString()}만`;
 }
 
+const CHART_TABS = [
+  { key: 'trades', label: '거래가 추이' },
+  { key: 'stats', label: '월별 통계' },
+];
+
 export default function DetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { apartments: compareList, addApartment: addToCompare } = useCompareStore();
+  const userPlan = user?.subscription?.plan_name || 'free';
+  const canCompare = isAuthenticated && ['basic', 'pro'].includes(userPlan);
+  const [chartTab, setChartTab] = useState('trades');
+  const [showShare, setShowShare] = useState(false);
 
   const { data: apartment, isLoading: isLoadingApt } = useQuery({
     queryKey: ['apartment', id],
@@ -36,6 +53,11 @@ export default function DetailPage() {
 
   const trades = tradesResponse?.data || [];
 
+  const { data: statsData } = useQuery({
+    queryKey: ['stats', id],
+    queryFn: () => getApartmentStats(id),
+  });
+
   const { data: analysis } = useQuery({
     queryKey: ['analysis', id],
     queryFn: () => getAnalysis(id),
@@ -46,6 +68,34 @@ export default function DetailPage() {
     queryFn: getFavorites,
     enabled: isAuthenticated,
   });
+
+  const { data: alertData } = useQuery({
+    queryKey: ['alert', id],
+    queryFn: () => getAlertForApartment(id),
+    enabled: isAuthenticated,
+  });
+
+  const hasAlert = !!alertData?.alert;
+  const isInCompare = compareList.some((a) => a.id === apartment?.id);
+
+  const createAlertMutation = useMutation({
+    mutationFn: createAlert,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alert', id] }),
+  });
+
+  const deleteAlertMutation = useMutation({
+    mutationFn: deleteAlert,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alert', id] }),
+  });
+
+  const handleAlertToggle = () => {
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (hasAlert) {
+      deleteAlertMutation.mutate(alertData.alert.id);
+    } else {
+      createAlertMutation.mutate({ apartment_id: parseInt(id, 10) });
+    }
+  };
 
   const isFavorited = favorites?.some((f) => String(f.id) === String(id));
 
@@ -60,14 +110,16 @@ export default function DetailPage() {
   });
 
   const handleFavoriteToggle = () => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-    if (isFavorited) {
-      removeFavMutation.mutate(id);
-    } else {
-      addFavMutation.mutate(id);
+    if (!isAuthenticated) { navigate('/login'); return; }
+    if (isFavorited) { removeFavMutation.mutate(id); }
+    else { addFavMutation.mutate(id); }
+  };
+
+  const handleCompareToggle = () => {
+    if (!apartment) return;
+    if (!canCompare) { navigate('/subscription'); return; }
+    if (!isInCompare) {
+      addToCompare({ id: apartment.id, name: apartment.name, address: apartment.address });
     }
   };
 
@@ -83,10 +135,7 @@ export default function DetailPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)]">
         <p className="text-gray-500 text-lg">아파트 정보를 찾을 수 없습니다</p>
-        <button
-          onClick={() => navigate('/')}
-          className="mt-4 text-primary-600 hover:text-primary-700 font-medium"
-        >
+        <button onClick={() => navigate('/')} className="mt-4 text-primary-600 hover:text-primary-700 font-medium">
           지도로 돌아가기
         </button>
       </div>
@@ -108,61 +157,101 @@ export default function DetailPage() {
             뒤로가기
           </button>
 
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{apartment.name}</h1>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{apartment.name}</h1>
               <p className="text-sm text-gray-500 mt-1">{apartment.address}</p>
             </div>
-            <button
-              onClick={handleFavoriteToggle}
-              className={`p-2.5 rounded-full border transition-colors ${
-                isFavorited
-                  ? 'bg-red-50 border-red-200 text-red-500'
-                  : 'bg-white border-gray-200 text-gray-400 hover:text-red-400 hover:border-red-200'
-              }`}
-              title={isFavorited ? '관심 해제' : '관심 등록'}
-            >
-              <svg
-                className="w-6 h-6"
-                fill={isFavorited ? 'currentColor' : 'none'}
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+
+            {/* 액션 버튼 그룹 */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* 공유 */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowShare(!showShare)}
+                  className={`p-2.5 rounded-full border transition-colors ${
+                    showShare
+                      ? 'bg-gray-100 border-gray-300 text-gray-600'
+                      : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300'
+                  }`}
+                  title="공유"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                </button>
+                {showShare && (
+                  <div className="absolute right-0 top-12 z-10 bg-white rounded-xl shadow-lg border border-gray-200 p-3">
+                    <ShareButtons title={`${apartment.name} 시세 정보`} />
+                  </div>
+                )}
+              </div>
+
+              {/* 비교 담기 */}
+              <button
+                onClick={handleCompareToggle}
+                disabled={isInCompare}
+                className={`p-2.5 rounded-full border transition-colors ${
+                  isInCompare
+                    ? 'bg-purple-50 border-purple-200 text-purple-500'
+                    : 'bg-white border-gray-200 text-gray-400 hover:text-purple-400 hover:border-purple-200'
+                }`}
+                title={isInCompare ? '비교 목록에 추가됨' : '비교 담기'}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                />
-              </svg>
-            </button>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </button>
+
+              {/* 알림 */}
+              <button
+                onClick={handleAlertToggle}
+                className={`p-2.5 rounded-full border transition-colors ${
+                  hasAlert
+                    ? 'bg-yellow-50 border-yellow-200 text-yellow-500'
+                    : 'bg-white border-gray-200 text-gray-400 hover:text-yellow-400 hover:border-yellow-200'
+                }`}
+                title={hasAlert ? '알림 해제' : '시세 알림 등록'}
+              >
+                <svg className="w-5 h-5" fill={hasAlert ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </button>
+
+              {/* 관심 */}
+              <button
+                onClick={handleFavoriteToggle}
+                className={`p-2.5 rounded-full border transition-colors ${
+                  isFavorited
+                    ? 'bg-red-50 border-red-200 text-red-500'
+                    : 'bg-white border-gray-200 text-gray-400 hover:text-red-400 hover:border-red-200'
+                }`}
+                title={isFavorited ? '관심 해제' : '관심 등록'}
+              >
+                <svg className="w-5 h-5" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Info Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
             <div className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-500">건축년도</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">
-                {apartment.buildYear || '-'}년
-              </p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{apartment.buildYear || '-'}년</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-500">총 세대수</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">
-                {apartment.totalUnits?.toLocaleString() || '-'}세대
-              </p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{apartment.totalUnits?.toLocaleString() || '-'}세대</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-500">총 동수</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">
-                {apartment.dongCount || '-'}동
-              </p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{apartment.dongCount || '-'}동</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-500">최고층</p>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">
-                {apartment.maxFloor || '-'}층
-              </p>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{apartment.maxFloor || '-'}층</p>
             </div>
           </div>
         </div>
@@ -170,14 +259,33 @@ export default function DetailPage() {
 
       {/* Content */}
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* Price Chart */}
-        {isLoadingTrades ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <LoadingSpinner text="거래 데이터 로딩중..." />
+        {/* Price Charts — 탭 전환 */}
+        <div className="bg-white rounded-xl border border-gray-200">
+          <div className="flex border-b border-gray-200">
+            {CHART_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setChartTab(tab.key)}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  chartTab === tab.key
+                    ? 'text-primary-600 border-b-2 border-primary-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <PriceChart trades={trades} title="거래가 추이" />
-        )}
+          <div className="p-6">
+            {isLoadingTrades ? (
+              <LoadingSpinner text="거래 데이터 로딩중..." />
+            ) : chartTab === 'trades' ? (
+              <PriceChart trades={trades} title="" />
+            ) : (
+              <MonthlyStatsChart stats={statsData?.stats || []} title="" />
+            )}
+          </div>
+        </div>
 
         {/* Area Compare Chart */}
         <AreaCompareChart
@@ -189,6 +297,12 @@ export default function DetailPage() {
           title="주변 시세 비교"
         />
 
+        {/* School Info */}
+        <SchoolInfo apartmentId={id} />
+
+        {/* Reviews */}
+        <ReviewSection apartmentId={id} />
+
         {/* Recent Trades Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
@@ -199,43 +313,25 @@ export default function DetailPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    거래일
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    면적(㎡)
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    층
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    거래가
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">거래일</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">면적(㎡)</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">층</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">거래가</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {trades.length > 0 ? (
                   trades.map((trade, i) => (
                     <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {dayjs(trade.tradeDate).format('YYYY.MM.DD')}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {trade.area}㎡ ({Math.round(trade.area / 3.306)}평)
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {trade.floor}층
-                      </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-primary-600 text-right">
-                        {formatPrice(trade.price)}만원
-                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{dayjs(trade.tradeDate).format('YYYY.MM.DD')}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{trade.area}㎡ ({Math.round(trade.area / 3.306)}평)</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{trade.floor}층</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-primary-600 text-right">{formatPrice(trade.price)}만원</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
-                      거래 내역이 없습니다
-                    </td>
+                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">거래 내역이 없습니다</td>
                   </tr>
                 )}
               </tbody>

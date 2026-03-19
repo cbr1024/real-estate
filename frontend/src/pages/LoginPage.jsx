@@ -98,6 +98,35 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* 소셜 로그인 */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-3 text-gray-400">또는</span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <a href="/api/oauth/naver"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm text-white transition-colors"
+              style={{ backgroundColor: '#03C75A' }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M13.5 10.56L6.26 0H0v20h6.5V9.44L13.74 20H20V0h-6.5v10.56z" fill="white"/>
+              </svg>
+              네이버 로그인
+            </a>
+            <a href="/api/oauth/kakao"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-colors"
+              style={{ backgroundColor: '#FEE500', color: '#191919' }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M10 0C4.478 0 0 3.588 0 8.015c0 2.86 1.89 5.37 4.735 6.79-.21.78-.76 2.83-.87 3.27-.14.54.2.53.42.39.17-.12 2.75-1.87 3.86-2.63.6.09 1.22.13 1.85.13 5.522 0 10-3.588 10-8.015C20 3.588 15.522 0 10 0z" fill="#191919"/>
+              </svg>
+              카카오 로그인
+            </a>
+          </div>
+
           <div className="flex justify-center gap-4 mt-5 text-sm">
             <Link to="/find-id" className="text-gray-500 hover:text-gray-700">아이디 찾기</Link>
             <span className="text-gray-300">|</span>

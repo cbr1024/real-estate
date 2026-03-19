@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { trackApiCall, checkDailyLimit } = require('./apiUsageTracker');
 
 const GEOCODE_URL = 'https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode';
 
@@ -6,7 +7,12 @@ async function geocodeAddress(address) {
   const clientId = process.env.NAVER_MAP_CLIENT_ID;
   const clientSecret = process.env.NAVER_MAP_CLIENT_SECRET;
 
-  if (!clientId || !clientSecret) {
+  if (!clientId || !clientSecret) return null;
+
+  // 일일 한도 체크
+  const { allowed } = await checkDailyLimit('geocode');
+  if (!allowed) {
+    console.warn(`[Geocode] 일일 한도 초과. "${address}" 스킵`);
     return null;
   }
 
@@ -19,6 +25,9 @@ async function geocodeAddress(address) {
       },
       timeout: 5000,
     });
+
+    // 호출 기록
+    await trackApiCall('geocode');
 
     const { addresses } = response.data;
     if (addresses && addresses.length > 0) {

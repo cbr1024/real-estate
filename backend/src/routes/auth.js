@@ -93,8 +93,8 @@ router.post('/register', async (req, res) => {
     const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await pool.query(
-      `INSERT INTO users (email, password, nickname, email_verified, verify_token, verify_token_expires, created_at)
-       VALUES ($1, $2, $3, FALSE, $4, $5, NOW())`,
+      `INSERT INTO users (email, password, nickname, email_verified, verify_token, verify_token_expires, subscription_plan_id, created_at)
+       VALUES ($1, $2, $3, FALSE, $4, $5, (SELECT id FROM subscription_plans WHERE name = 'free'), NOW())`,
       [email, hashedPassword, nickname, verifyToken, verifyExpires]
     );
 
@@ -192,7 +192,12 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT id, email, nickname, password, email_verified FROM users WHERE email = $1', [email]
+      `SELECT u.id, u.email, u.nickname, u.password, u.email_verified, u.role,
+              sp.name AS plan_name, sp.display_name AS plan_display_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.email = $1`,
+      [email]
     );
 
     if (result.rows.length === 0) {
@@ -223,6 +228,12 @@ router.post('/login', async (req, res) => {
     // 로그인 성공 → 시도 횟수 초기화
     await clearLoginAttempts(ip, email);
 
+    // 로그인 기록
+    pool.query(
+      'INSERT INTO login_logs (user_id, provider, ip_address) VALUES ($1, $2, $3)',
+      [user.id, 'local', ip]
+    ).catch(() => {});
+
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
@@ -233,7 +244,11 @@ router.post('/login', async (req, res) => {
     setTokenCookies(res, accessToken, refreshToken);
 
     return res.json({
-      user: { id: user.id, email: user.email, nickname: user.nickname },
+      user: {
+        id: user.id, email: user.email, nickname: user.nickname,
+        role: user.role,
+        subscription: { plan_name: user.plan_name, plan_display_name: user.plan_display_name },
+      },
     });
   } catch (err) {
     console.error('Error logging in:', err);
@@ -266,7 +281,12 @@ router.post('/refresh', async (req, res) => {
 
     // 사용자 정보 조회
     const result = await pool.query(
-      'SELECT id, email, nickname FROM users WHERE id = $1', [decoded.id]
+      `SELECT u.id, u.email, u.nickname, u.role,
+              sp.name AS plan_name, sp.display_name AS plan_display_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = $1`,
+      [decoded.id]
     );
     if (result.rows.length === 0) {
       clearTokenCookies(res);
@@ -282,7 +302,11 @@ router.post('/refresh', async (req, res) => {
     });
 
     return res.json({
-      user: { id: user.id, email: user.email, nickname: user.nickname },
+      user: {
+        id: user.id, email: user.email, nickname: user.nickname,
+        role: user.role,
+        subscription: { plan_name: user.plan_name, plan_display_name: user.plan_display_name },
+      },
     });
   } catch (err) {
     console.error('Error refreshing token:', err);
@@ -304,8 +328,27 @@ router.get('/me', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.nickname, u.role, u.last_lat, u.last_lng,
+              sp.name AS plan_name, sp.display_name AS plan_display_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = $1`,
+      [decoded.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: '사용자를 찾을 수 없습니다.' });
+    }
+    const user = result.rows[0];
     return res.json({
-      user: { id: decoded.id, email: decoded.email, nickname: decoded.nickname },
+      user: {
+        id: user.id, email: user.email, nickname: user.nickname,
+        role: user.role,
+        last_lat: user.last_lat ? parseFloat(user.last_lat) : null,
+        last_lng: user.last_lng ? parseFloat(user.last_lng) : null,
+        subscription: { plan_name: user.plan_name, plan_display_name: user.plan_display_name },
+      },
     });
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

@@ -1,8 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import useMapStore from '../../stores/useMapStore';
 import { getApartmentsByBounds } from '../../api/apartments';
+import { getNearbyPlaces } from '../../api/places';
+import client from '../../api/client';
 
 const CLUSTER_GRID_SIZE = 80;
 
@@ -89,6 +91,13 @@ function formatPrice(price) {
   return `${num}만`;
 }
 
+// 거래 유형별 색상
+const TRADE_TYPE_COLORS = {
+  '매매': { price: '#2563eb', badge: '#2563eb', badgeBg: '#eff6ff', cluster: '#2563eb', clusterArrow: '#2563eb' },
+  '전세': { price: '#059669', badge: '#059669', badgeBg: '#ecfdf5', cluster: '#059669', clusterArrow: '#059669' },
+  '월세': { price: '#d97706', badge: '#d97706', badgeBg: '#fffbeb', cluster: '#d97706', clusterArrow: '#d97706' },
+};
+
 function roundCoord(v) {
   return Math.round(v * 10000) / 10000;
 }
@@ -102,24 +111,33 @@ export default function NaverMap() {
   const debounceRef = useRef(null);
   const navigate = useNavigate();
 
-  const { center, zoom, bounds, filters, selectedApartment, setCenter, setZoom, setBounds, setSelectedApartment } = useMapStore();
+  const overlayMarkersRef = useRef([]);
+  const myLocationMarkerRef = useRef(null);
+  const [locating, setLocating] = useState(false);
+  const { center, zoom, bounds, filters, overlays, selectedApartment, setCenter, setZoom, setBounds, setSelectedApartment } = useMapStore();
 
-  // 공유 queryKey (MapPage와 동일)
+  // 공유 queryKey (MapPage와 동일) — filters 객체 전체를 key에 포함하므로 필터 변경 시 자동 재조회
   const { data: apiResponse, isFetching } = useQuery({
     queryKey: ['apartments', bounds, filters],
     queryFn: () => {
       if (!bounds) return { totalCount: 0, items: [] };
-      return getApartmentsByBounds(bounds, {
+      const params = {
         tradeType: filters.tradeType,
         minPrice: filters.priceRange[0],
         maxPrice: filters.priceRange[1],
         minArea: filters.areaRange[0],
         maxArea: filters.areaRange[1],
-      });
+      };
+      if (filters.buildYearRange[0] > 0) params.minBuildYear = filters.buildYearRange[0];
+      if (filters.buildYearRange[1] > 0) params.maxBuildYear = filters.buildYearRange[1];
+      if (filters.floorRange[0] > 0) params.minFloor = filters.floorRange[0];
+      if (filters.floorRange[1] > 0) params.maxFloor = filters.floorRange[1];
+      if (filters.minUnits > 0) params.minUnits = filters.minUnits;
+      if (filters.minTradeCount > 0) params.minTradeCount = filters.minTradeCount;
+      return getApartmentsByBounds(bounds, params);
     },
     enabled: !!bounds,
     staleTime: 10 * 1000,
-    // 이전 데이터 유지 (마커 깜빡임 방지) — totalCount는 서버에서 계산하므로 안전
     placeholderData: (prev) => prev,
   });
 
@@ -152,13 +170,24 @@ export default function NaverMap() {
       zoom: zoom,
       minZoom: 10,
       maxZoom: 20,
+      scaleControl: false,
       zoomControl: true,
       zoomControlOptions: {
-        position: window.naver.maps.Position.TOP_RIGHT,
+        position: window.naver.maps.Position.RIGHT_CENTER,
+        style: window.naver.maps.ZoomControlStyle.SMALL,
       },
     });
 
+    // 줌 컨트롤을 아파트 목록 패널(380px) 왼쪽으로 밀기
+    setTimeout(() => {
+      const ctrl = mapRef.current?.querySelector('.naver-map-zoom-control, [class*="zoom"]');
+      if (ctrl) ctrl.style.right = '390px';
+    }, 500);
+
     mapInstanceRef.current = map;
+
+    // 지도 로드 추적
+    client.post('/apartments/track-map-load').catch(() => {});
 
     window.naver.maps.Event.addListener(map, 'idle', () => {
       const mapCenter = map.getCenter();
@@ -198,6 +227,8 @@ export default function NaverMap() {
 
     const clusters = clusterMarkers(items, map);
 
+    const colors = TRADE_TYPE_COLORS[filters.tradeType] || TRADE_TYPE_COLORS['매매'];
+
     clusters.forEach((cluster) => {
       let markerContent;
       if (cluster.count === 1) {
@@ -209,17 +240,17 @@ export default function NaverMap() {
           <div style="cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15));">
             <div style="
               background:white;border-radius:8px;padding:6px 10px;
-              border:1px solid #e5e7eb;white-space:nowrap;
+              border:2px solid ${colors.badge};white-space:nowrap;
               font-family:-apple-system,'Noto Sans KR',sans-serif;
             ">
               <div style="font-size:11px;font-weight:600;color:#111;line-height:1.3;">${shortName}</div>
               <div style="font-size:10px;color:#888;margin-top:1px;">${apt.address ? apt.address.split(' ').slice(-2).join(' ') : ''}</div>
               <div style="margin-top:4px;display:flex;align-items:center;gap:4px;">
-                ${area ? `<span style="font-size:9px;color:#2563eb;background:#eff6ff;padding:1px 5px;border-radius:4px;font-weight:600;">${area}</span>` : ''}
-                <span style="font-size:14px;font-weight:800;color:#7c3aed;">${price}</span>
+                ${area ? `<span style="font-size:9px;color:${colors.badge};background:${colors.badgeBg};padding:1px 5px;border-radius:4px;font-weight:600;">${area}</span>` : ''}
+                <span style="font-size:14px;font-weight:800;color:${colors.price};">${price}</span>
               </div>
             </div>
-            <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid white;margin:0 auto;position:relative;top:-1px;"></div>
+            <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid ${colors.badge};margin:0 auto;position:relative;top:-1px;"></div>
           </div>
         `;
       } else {
@@ -228,13 +259,13 @@ export default function NaverMap() {
         markerContent = `
           <div title="${tooltipLines}${tooltipExtra}" style="cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15));">
             <div style="
-              background:#2563eb;border-radius:20px;padding:6px 14px;
+              background:${colors.cluster};border-radius:20px;padding:6px 14px;
               white-space:nowrap;text-align:center;
               font-family:-apple-system,'Noto Sans KR',sans-serif;
             ">
               <div style="font-size:14px;font-weight:800;color:white;">${cluster.count}</div>
             </div>
-            <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid #2563eb;margin:0 auto;"></div>
+            <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:6px solid ${colors.clusterArrow};margin:0 auto;"></div>
           </div>
         `;
       }
@@ -268,7 +299,7 @@ export default function NaverMap() {
 
       markersRef.current.push(marker);
     });
-  }, [items, filters.tradeType]);
+  }, [items, filters]);
 
   useEffect(() => {
     window.__navigateToApartment__ = (id) => navigate(`/apartment/${id}`);
@@ -365,9 +396,117 @@ export default function NaverMap() {
     return () => clearTimeout(timer);
   }, [selectedApartment]);
 
+  // 학교/지하철 오버레이 마커
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    // 기존 오버레이 마커 제거
+    overlayMarkersRef.current.forEach((m) => m.setMap(null));
+    overlayMarkersRef.current = [];
+
+    const activeTypes = Object.entries(overlays).filter(([, v]) => v).map(([k]) => k);
+    if (activeTypes.length === 0) return;
+
+    const mapCenter = map.getCenter();
+
+    activeTypes.forEach((type) => {
+      getNearbyPlaces(mapCenter.lat(), mapCenter.lng(), type)
+        .then((data) => {
+          if (!data.places) return;
+          data.places.forEach((place) => {
+            if (!place.lat || !place.lng) return;
+            const icon = type === 'school' ? '🏫' : '🚇';
+            const bgColor = type === 'school' ? '#dcfce7' : '#dbeafe';
+            const borderColor = type === 'school' ? '#86efac' : '#93c5fd';
+
+            const marker = new window.naver.maps.Marker({
+              position: new window.naver.maps.LatLng(place.lat, place.lng),
+              map,
+              icon: {
+                content: `
+                  <div style="cursor:default;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.1));">
+                    <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:4px 8px;white-space:nowrap;font-family:-apple-system,'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:4px;">
+                      <span style="font-size:14px;">${icon}</span>
+                      <span style="font-size:11px;font-weight:600;color:#374151;">${place.name}</span>
+                    </div>
+                  </div>
+                `,
+                anchor: new window.naver.maps.Point(40, 15),
+              },
+              zIndex: -1,
+            });
+            overlayMarkersRef.current.push(marker);
+          });
+        })
+        .catch(() => {});
+    });
+  }, [overlays, center]);
+
+  const goToMyLocation = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // localStorage에 저장 (다음 접속 시 자동 적용)
+        localStorage.setItem('userLocation', JSON.stringify({ lat, lng }));
+
+        // 로그인 사용자면 DB에도 저장
+        client.put('/users/location', { lat, lng }).catch(() => {});
+
+        const map = mapInstanceRef.current;
+        if (map) {
+          map.setCenter(new window.naver.maps.LatLng(lat, lng));
+          map.setZoom(15);
+
+          // 내 위치 마커
+          if (myLocationMarkerRef.current) {
+            myLocationMarkerRef.current.setMap(null);
+          }
+          myLocationMarkerRef.current = new window.naver.maps.Marker({
+            position: new window.naver.maps.LatLng(lat, lng),
+            map,
+            icon: {
+              content: `
+                <div style="position:relative;width:40px;height:40px;">
+                  <div style="position:absolute;inset:0;border-radius:50%;background:rgba(59,130,246,0.15);animation:loc-pulse 2s ease-out infinite;"></div>
+                  <div style="position:absolute;top:12px;left:12px;width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>
+                </div>
+                <style>@keyframes loc-pulse{0%{transform:scale(0.5);opacity:1}100%{transform:scale(2);opacity:0}}</style>
+              `,
+              anchor: new window.naver.maps.Point(20, 20),
+            },
+            zIndex: 100,
+          });
+        }
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
+
   return (
     <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
+      {/* 내 위치 버튼 */}
+      <button
+        onClick={goToMyLocation}
+        disabled={locating}
+        className="absolute bottom-6 left-4 z-10 bg-white/50 backdrop-blur-md hover:bg-white/70 w-11 h-11 rounded-full shadow-lg border border-white/40 flex items-center justify-center transition-all active:scale-95"
+        title="내 위치로 이동"
+      >
+        {locating ? (
+          <div className="w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+        ) : (
+          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+          </svg>
+        )}
+      </button>
     </div>
   );
 }
