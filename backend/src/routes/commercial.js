@@ -3,42 +3,99 @@ const pool = require('../config/database');
 
 const router = express.Router();
 
-// GET / — 상가/오피스텔 목록 (지도 bounds 검색)
+// GET / — 상가/오피스텔 목록
 router.get('/', async (req, res) => {
   try {
-    const { swLat, swLng, neLat, neLng, propertyType, tradeType, minPrice, maxPrice } = req.query;
+    const { swLat, swLng, neLat, neLng, propertyType, search, tradeType, minPrice, maxPrice, sort, gu, startDate, endDate } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = 20;
+    const offset = (page - 1) * limit;
 
-    if (!swLat || !swLng || !neLat || !neLng) {
-      return res.status(400).json({ error: '지도 영역이 필요합니다.' });
+    let where = 'WHERE 1=1';
+    const params = [];
+    let paramIdx = 1;
+
+    if (swLat && swLng && neLat && neLng) {
+      where += ` AND cp.lat BETWEEN $${paramIdx++} AND $${paramIdx++} AND cp.lng BETWEEN $${paramIdx++} AND $${paramIdx++}`;
+      params.push(swLat, neLat, swLng, neLng);
     }
-
-    let where = 'WHERE cp.lat BETWEEN $1 AND $2 AND cp.lng BETWEEN $3 AND $4';
-    const params = [swLat, neLat, swLng, neLng];
-    let paramIdx = 5;
 
     if (propertyType && propertyType !== 'all') {
       where += ` AND cp.property_type = $${paramIdx++}`;
       params.push(propertyType);
     }
 
+    if (search) {
+      where += ` AND (cp.name ILIKE $${paramIdx} OR cp.address ILIKE $${paramIdx})`;
+      params.push(`%${search}%`);
+      paramIdx++;
+    }
+
+    if (gu) {
+      where += ` AND cp.address ILIKE $${paramIdx++}`;
+      params.push(`%${gu}%`);
+    }
+
+    // 서브쿼리 기반 필터 (거래유형, 가격)
+    let havingClauses = [];
+    if (tradeType && tradeType !== 'all') {
+      where += ` AND EXISTS (SELECT 1 FROM commercial_trade_history cth WHERE cth.property_id = cp.id AND cth.trade_type = $${paramIdx++})`;
+      params.push(tradeType);
+    }
+    if (minPrice) {
+      where += ` AND EXISTS (SELECT 1 FROM commercial_trade_history cth WHERE cth.property_id = cp.id AND cth.price >= $${paramIdx++})`;
+      params.push(parseInt(minPrice, 10));
+    }
+    if (maxPrice) {
+      where += ` AND EXISTS (SELECT 1 FROM commercial_trade_history cth WHERE cth.property_id = cp.id AND cth.price <= $${paramIdx++})`;
+      params.push(parseInt(maxPrice, 10));
+    }
+    if (startDate) {
+      where += ` AND EXISTS (SELECT 1 FROM commercial_trade_history cth WHERE cth.property_id = cp.id AND cth.trade_date >= $${paramIdx++})`;
+      params.push(startDate);
+    }
+    if (endDate) {
+      where += ` AND EXISTS (SELECT 1 FROM commercial_trade_history cth WHERE cth.property_id = cp.id AND cth.trade_date <= $${paramIdx++})`;
+      params.push(endDate);
+    }
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM commercial_properties cp ${where}`, params
+    );
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    params.push(limit, offset);
     const result = await pool.query(
-      `SELECT cp.id, cp.name, cp.property_type, cp.address, cp.road_address,
-              cp.lat AS latitude, cp.lng AS longitude,
+      `SELECT cp.id, cp.name, cp.property_type, cp.address,
               cp.build_year AS "buildYear",
               (SELECT cth.price FROM commercial_trade_history cth
                WHERE cth.property_id = cp.id ORDER BY cth.trade_date DESC LIMIT 1) AS "latestPrice",
               (SELECT cth.area FROM commercial_trade_history cth
                WHERE cth.property_id = cp.id ORDER BY cth.trade_date DESC LIMIT 1) AS "latestArea",
+              (SELECT cth.trade_type FROM commercial_trade_history cth
+               WHERE cth.property_id = cp.id ORDER BY cth.trade_date DESC LIMIT 1) AS "latestTradeType",
+              (SELECT cth.trade_date FROM commercial_trade_history cth
+               WHERE cth.property_id = cp.id ORDER BY cth.trade_date DESC LIMIT 1) AS "latestTradeDate",
               (SELECT COUNT(*) FROM commercial_trade_history cth
                WHERE cth.property_id = cp.id)::int AS "tradeCount"
        FROM commercial_properties cp
        ${where}
-       ORDER BY "latestPrice" DESC NULLS LAST
-       LIMIT 200`,
+       ORDER BY ${
+         sort === 'price_asc' ? '"latestPrice" ASC NULLS LAST' :
+         sort === 'price_desc' ? '"latestPrice" DESC NULLS LAST' :
+         sort === 'area_desc' ? '"latestArea" DESC NULLS LAST' :
+         sort === 'trades' ? '"tradeCount" DESC' :
+         '"latestTradeDate" DESC NULLS LAST'
+       }
+       LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
       params
     );
 
-    return res.json({ totalCount: result.rows.length, items: result.rows });
+    return res.json({
+      totalCount: total,
+      items: result.rows,
+      pagination: { page, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (err) {
     console.error('Error fetching commercial properties:', err);
     return res.status(500).json({ error: '상가 정보 조회에 실패했습니다.' });

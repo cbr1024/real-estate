@@ -1,9 +1,7 @@
 import client from './client';
 
-export const getCommercialByBounds = async (bounds, params = {}) => {
-  const { data } = await client.get('/commercial', {
-    params: { swLat: bounds.sw.lat, swLng: bounds.sw.lng, neLat: bounds.ne.lat, neLng: bounds.ne.lng, ...params },
-  });
+export const getCommercialList = async (params = {}) => {
+  const { data } = await client.get('/commercial', { params });
   return data;
 };
 

@@ -37,7 +37,7 @@ const SORT_OPTIONS = [
 
 export default function MapPage() {
   // 모바일은 기본 닫힘, PC는 기본 열림
-  const [isPanelOpen, setIsPanelOpen] = useState(() => window.innerWidth >= 768);
+  const [isPanelOpen, setIsPanelOpen] = useState(() => window.innerWidth >= 1024);
   const [sortKey, setSortKey] = useState('price_desc');
   const panelRef = useRef(null);
   const { bounds, filters, selectedApartment } = useMapStore();

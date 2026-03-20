@@ -130,27 +130,15 @@ export default function MapFilter() {
           onClick={() => handleOverlayToggle('school')}
           className={`rounded-lg shadow-lg px-3 py-2.5 flex items-center gap-1.5 transition-colors border backdrop-blur-md ${
             overlays.school
-              ? 'bg-green-50/50 border-green-300/40 text-green-700'
+              ? 'bg-green-500 border-green-600 text-white shadow-green-500/30'
               : 'bg-white/50 border-white/40 text-gray-600 hover:bg-white/70'
           }`}
         >
           <span className="text-base">🏫</span>
           <span className="text-sm font-medium">학교</span>
-          {!isBasicOrAbove && <span className="text-[9px] text-blue-500 font-bold">BASIC+</span>}
+          {!isBasicOrAbove && !overlays.school && <span className="text-[9px] text-blue-500 font-bold">BASIC+</span>}
         </button>
 
-        <button
-          onClick={() => handleOverlayToggle('subway')}
-          className={`rounded-lg shadow-lg px-3 py-2.5 flex items-center gap-1.5 transition-colors border backdrop-blur-md ${
-            overlays.subway
-              ? 'bg-blue-50/50 border-blue-300/40 text-blue-700'
-              : 'bg-white/50 border-white/40 text-gray-600 hover:bg-white/70'
-          }`}
-        >
-          <span className="text-base">🚇</span>
-          <span className="text-sm font-medium">지하철</span>
-          {!isPro && <span className="text-[9px] text-violet-500 font-bold">PRO</span>}
-        </button>
       </div>
 
       {/* 2행: 필터 버튼 */}

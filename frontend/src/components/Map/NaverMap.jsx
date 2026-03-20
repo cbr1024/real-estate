@@ -396,7 +396,7 @@ export default function NaverMap() {
     return () => clearTimeout(timer);
   }, [selectedApartment]);
 
-  // 학교/지하철 오버레이 마커
+  // 학교/지하철 오버레이 마커 — 지도 영역 전체 커버
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -408,38 +408,61 @@ export default function NaverMap() {
     const activeTypes = Object.entries(overlays).filter(([, v]) => v).map(([k]) => k);
     if (activeTypes.length === 0) return;
 
-    const mapCenter = map.getCenter();
+    const mapBounds = map.getBounds();
+    const sw = mapBounds.getSW();
+    const ne = mapBounds.getNE();
+    const cLat = (sw.lat() + ne.lat()) / 2;
+    const cLng = (sw.lng() + ne.lng()) / 2;
+
+    // 지도 영역을 9등분하여 검색 (중앙 + 8방향)
+    const searchPoints = [
+      { lat: cLat, lng: cLng },                                    // 중앙
+      { lat: sw.lat() + (ne.lat() - sw.lat()) * 0.25, lng: cLng }, // 하단
+      { lat: sw.lat() + (ne.lat() - sw.lat()) * 0.75, lng: cLng }, // 상단
+      { lat: cLat, lng: sw.lng() + (ne.lng() - sw.lng()) * 0.25 }, // 좌측
+      { lat: cLat, lng: sw.lng() + (ne.lng() - sw.lng()) * 0.75 }, // 우측
+    ];
+
+    const seenNames = new Set();
 
     activeTypes.forEach((type) => {
-      getNearbyPlaces(mapCenter.lat(), mapCenter.lng(), type)
-        .then((data) => {
-          if (!data.places) return;
-          data.places.forEach((place) => {
-            if (!place.lat || !place.lng) return;
-            const icon = type === 'school' ? '🏫' : '🚇';
-            const bgColor = type === 'school' ? '#dcfce7' : '#dbeafe';
-            const borderColor = type === 'school' ? '#86efac' : '#93c5fd';
+      const icon = type === 'school' ? '🏫' : '🚇';
+      const bgColor = type === 'school' ? '#dcfce7' : '#dbeafe';
+      const borderColor = type === 'school' ? '#86efac' : '#93c5fd';
 
-            const marker = new window.naver.maps.Marker({
-              position: new window.naver.maps.LatLng(place.lat, place.lng),
-              map,
-              icon: {
-                content: `
-                  <div style="cursor:default;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.1));">
-                    <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:4px 8px;white-space:nowrap;font-family:-apple-system,'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:4px;">
-                      <span style="font-size:14px;">${icon}</span>
-                      <span style="font-size:11px;font-weight:600;color:#374151;">${place.name}</span>
+      searchPoints.forEach((point) => {
+        getNearbyPlaces(point.lat, point.lng, type)
+          .then((data) => {
+            if (!data.places) return;
+            data.places.forEach((place) => {
+              if (!place.lat || !place.lng) return;
+              // 중복 방지
+              if (seenNames.has(place.name)) return;
+              seenNames.add(place.name);
+              // 지도 영역 내인지 확인
+              if (place.lat < sw.lat() || place.lat > ne.lat() || place.lng < sw.lng() || place.lng > ne.lng()) return;
+
+              const marker = new window.naver.maps.Marker({
+                position: new window.naver.maps.LatLng(place.lat, place.lng),
+                map,
+                icon: {
+                  content: `
+                    <div style="cursor:default;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.1));">
+                      <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:4px 8px;white-space:nowrap;font-family:-apple-system,'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:4px;">
+                        <span style="font-size:14px;">${icon}</span>
+                        <span style="font-size:11px;font-weight:600;color:#374151;">${place.name}</span>
+                      </div>
                     </div>
-                  </div>
-                `,
-                anchor: new window.naver.maps.Point(40, 15),
-              },
-              zIndex: -1,
+                  `,
+                  anchor: new window.naver.maps.Point(40, 15),
+                },
+                zIndex: -1,
+              });
+              overlayMarkersRef.current.push(marker);
             });
-            overlayMarkersRef.current.push(marker);
-          });
-        })
-        .catch(() => {});
+          })
+          .catch(() => {});
+      });
     });
   }, [overlays, center]);
 
