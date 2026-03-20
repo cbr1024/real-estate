@@ -24,3 +24,18 @@ export const freeDowngrade = async () => {
   const { data } = await client.post('/payments/free-downgrade');
   return data;
 };
+
+export const startFreeTrial = async (planId) => {
+  const { data } = await client.post('/payments/free-trial', { plan_id: planId });
+  return data;
+};
+
+export const getTrialStatus = async () => {
+  const { data } = await client.get('/payments/trial-status');
+  return data;
+};
+
+export const requestRefund = async (paymentId, reason) => {
+  const { data } = await client.post('/payments/refund', { payment_id: paymentId, reason });
+  return data;
+};

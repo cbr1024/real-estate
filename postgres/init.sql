@@ -79,7 +79,8 @@ ALTER TABLE users
     ADD COLUMN subscription_expires_at TIMESTAMPTZ,
     ADD COLUMN role VARCHAR(20) DEFAULT 'user',
     ADD COLUMN last_lat NUMERIC(10, 7),
-    ADD COLUMN last_lng NUMERIC(10, 7);
+    ADD COLUMN last_lng NUMERIC(10, 7),
+    ADD COLUMN free_trial_used BOOLEAN DEFAULT FALSE;
 
 -- Seed subscription plans
 INSERT INTO subscription_plans (name, display_name, description, price, sort_order) VALUES
@@ -182,6 +183,9 @@ CREATE TABLE payments (
     cancelled_at TIMESTAMPTZ,
     cancel_reason TEXT,
     receipt_url TEXT,
+    is_free_trial BOOLEAN DEFAULT FALSE,
+    refund_amount INTEGER,
+    refunded_by VARCHAR(20),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import useAuthStore from '../stores/useAuthStore';
 import { getPlans } from '../api/subscription';
-import { preparePayment, confirmPayment, freeDowngrade, getPaymentHistory } from '../api/payments';
+import { preparePayment, confirmPayment, freeDowngrade, getPaymentHistory, startFreeTrial, getTrialStatus, requestRefund } from '../api/payments';
 
 // 플랜별 기능 목록 (프론트 표시용)
 const PLAN_FEATURES = {
@@ -62,6 +62,8 @@ export default function SubscriptionPage() {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [paymentResult, setPaymentResult] = useState(null);
+  const [trialEligible, setTrialEligible] = useState(false);
+  const [refundingId, setRefundingId] = useState(null);
   const tossPaymentRef = useRef(null);
 
   useEffect(() => {
@@ -70,6 +72,15 @@ export default function SubscriptionPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  // 무료 체험 가능 여부
+  useEffect(() => {
+    if (isAuthenticated) {
+      getTrialStatus()
+        .then((data) => setTrialEligible(data.eligible))
+        .catch(() => {});
+    }
+  }, [isAuthenticated]);
 
   // 토스페이먼츠 SDK 로드
   useEffect(() => {
@@ -149,6 +160,30 @@ export default function SubscriptionPage() {
         setProcessing(false);
       }
       return;
+    }
+
+    // 무료 체험 가능하면 체험 먼저 제안
+    if (trialEligible) {
+      const useTrial = confirm(
+        `🎉 첫 결제 혜택!\n${plan.display_name} 플랜을 30일 무료로 체험할 수 있습니다.\n\n무료 체험을 시작하시겠습니까?\n(취소를 누르면 바로 결제로 진행합니다)`
+      );
+      if (useTrial) {
+        setProcessing(true);
+        try {
+          const data = await startFreeTrial(plan.id);
+          updateSubscription({
+            plan_name: data.subscription.plan_name,
+            plan_display_name: data.subscription.plan_display_name,
+          });
+          setTrialEligible(false);
+          setPaymentResult({ success: true, message: data.message });
+        } catch (err) {
+          alert(err.response?.data?.error || '무료 체험 시작에 실패했습니다.');
+        } finally {
+          setProcessing(false);
+        }
+        return;
+      }
     }
 
     // 유료 플랜 — 결제 진행
@@ -264,6 +299,14 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 -mt-8 pb-16">
+        {/* 무료 체험 배너 */}
+        {isAuthenticated && trialEligible && (
+          <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-5 text-white text-center shadow-lg">
+            <p className="text-lg font-bold">첫 결제 혜택 — 30일 무료 체험</p>
+            <p className="text-sm text-blue-100 mt-1">유료 플랜을 선택하면 결제 없이 30일간 무료로 이용할 수 있습니다</p>
+          </div>
+        )}
+
         {/* 플랜 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.map((plan) => {
@@ -391,28 +434,88 @@ export default function SubscriptionPage() {
             {paymentHistory.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {paymentHistory.map((p) => (
-                  <div key={p.id} className="px-5 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{p.plan_name}</p>
-                      <p className="text-xs text-gray-400">
-                        {new Date(p.created_at).toLocaleDateString('ko-KR')}
-                        {p.method && ` · ${p.method}`}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-gray-900">
-                        ₩{p.amount.toLocaleString()}
-                      </p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        p.status === 'paid'
-                          ? 'bg-green-100 text-green-700'
-                          : p.status === 'cancelled'
-                          ? 'bg-red-100 text-red-700'
+                  <div key={p.id} className="px-5 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-800">{p.plan_name}</p>
+                          {p.is_free_trial && (
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">무료체험</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          {new Date(p.created_at).toLocaleDateString('ko-KR')}
+                          {p.method && ` · ${p.method}`}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-gray-900">
+                          {p.is_free_trial ? '무료' : `₩${p.amount.toLocaleString()}`}
+                        </p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          p.status === 'paid' ? 'bg-green-100 text-green-700'
+                          : p.status === 'refunded' ? 'bg-orange-100 text-orange-700'
+                          : p.status === 'cancelled' ? 'bg-red-100 text-red-700'
+                          : p.status === 'failed' ? 'bg-gray-100 text-gray-500'
                           : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {p.status === 'paid' ? '결제완료' : p.status === 'cancelled' ? '취소' : p.status === 'failed' ? '실패' : '대기'}
-                      </span>
+                        }`}>
+                          {p.status === 'paid' ? '결제완료' : p.status === 'refunded' ? '환불완료' : p.status === 'cancelled' ? '취소' : p.status === 'failed' ? '실패' : '대기'}
+                        </span>
+                      </div>
                     </div>
+                    {/* 환불 정보 */}
+                    {p.status === 'refunded' && (
+                      <div className="mt-1.5 text-xs text-orange-600">
+                        환불 ₩{(p.refund_amount || 0).toLocaleString()} · {p.refunded_by === 'admin' ? '관리자' : '사용자'} 요청
+                        {p.cancel_reason && ` · ${p.cancel_reason}`}
+                      </div>
+                    )}
+                    {/* 환불 버튼 — 유료 결제 & paid 상태만 */}
+                    {p.status === 'paid' && !p.is_free_trial && (
+                      <div className="mt-2">
+                        {refundingId === p.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`refund-reason-${p.id}`}
+                              type="text"
+                              placeholder="환불 사유 (선택)"
+                              className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary-500"
+                            />
+                            <button
+                              onClick={async () => {
+                                const reason = document.getElementById(`refund-reason-${p.id}`)?.value || '';
+                                try {
+                                  const data = await requestRefund(p.id, reason);
+                                  alert(data.message);
+                                  updateSubscription({ plan_name: 'free', plan_display_name: '무료' });
+                                  const hist = await getPaymentHistory();
+                                  setPaymentHistory(hist.payments || []);
+                                } catch (err) {
+                                  alert(err.response?.data?.error || '환불에 실패했습니다.');
+                                }
+                                setRefundingId(null);
+                              }}
+                              className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600"
+                            >
+                              환불 확인
+                            </button>
+                            <button
+                              onClick={() => setRefundingId(null)}
+                              className="px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setRefundingId(p.id)}
+                            className="text-xs text-gray-400 hover:text-orange-500 transition-colors"
+                          >
+                            환불 요청
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
