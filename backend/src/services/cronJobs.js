@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const { syncTradeData, syncCommercialData } = require('./dataSync');
 const { checkPriceAlerts } = require('./alertChecker');
 const { scrapePolicy } = require('./policyScraper');
+const { syncComplexInfo } = require('./complexSync');
 const axios = require('axios');
 
 function initCronJobs() {
@@ -71,11 +72,30 @@ function initCronJobs() {
     }
   });
 
+  // Weekly on Sunday at 3:30 AM - sync complex info (세대수/동수)
+  cron.schedule('30 3 * * 0', async () => {
+    console.log('Starting complex info sync...');
+    try {
+      const result = await syncComplexInfo();
+      console.log('Complex info sync completed:', result);
+    } catch (err) {
+      console.error('Complex info sync failed:', err);
+    }
+  });
+
   // 서버 시작 시 정책 데이터가 없으면 즉시 수집
   pool.query('SELECT COUNT(*) FROM policy_announcements').then((r) => {
     if (parseInt(r.rows[0].count, 10) === 0) {
       console.log('No policy data found. Running initial scrape...');
       scrapePolicy(5).catch(console.error);
+    }
+  }).catch(() => {});
+
+  // 서버 시작 시 세대수/동수 없는 아파트가 있으면 동기화
+  pool.query('SELECT COUNT(*) FROM apartments WHERE kapt_code IS NULL AND total_units IS NULL').then((r) => {
+    if (parseInt(r.rows[0].count, 10) > 0) {
+      console.log(`${r.rows[0].count}개 아파트에 단지정보 없음. 동기화 예약 (60초 후)...`);
+      setTimeout(() => syncComplexInfo().catch(console.error), 60000);
     }
   }).catch(() => {});
 

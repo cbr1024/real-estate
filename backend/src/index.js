@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -25,6 +26,7 @@ const discussionsRouter = require('./routes/discussions');
 const columnsRouter = require('./routes/columns');
 const auctionsRouter = require('./routes/auctions');
 const commercialRouter = require('./routes/commercial');
+const complexesRouter = require('./routes/complexes');
 const setupWebSocket = require('./websocket');
 const { initCronJobs } = require('./services/cronJobs');
 
@@ -90,6 +92,7 @@ app.use('/api/discussions', discussionsRouter);
 app.use('/api/columns', columnsRouter);
 app.use('/api/auctions', auctionsRouter);
 app.use('/api/commercial', commercialRouter);
+app.use('/api/complexes', complexesRouter);
 
 // WebSocket
 setupWebSocket(server);

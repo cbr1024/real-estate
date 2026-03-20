@@ -390,6 +390,45 @@ router.get('/:id', async (req, res) => {
     }
 
     const data = result.rows[0];
+
+    // 세대수/동수 없으면 네이버 부동산에서 실시간 보충
+    if (!data.totalUnits || !data.dongCount) {
+      try {
+        const naverRes = await axios.get('https://new.land.naver.com/api/complexes/search-complexes', {
+          params: { keyword: data.name, region: '' },
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+          timeout: 5000,
+          validateStatus: (s) => s < 500,
+        });
+        const complexes = naverRes.data?.complexes || [];
+        // 이름+주소 매칭
+        const match = complexes.find(c => c.complexName === data.name && data.address?.includes(c.cortarAddress?.split(' ').pop()))
+          || complexes.find(c => c.complexName === data.name)
+          || complexes[0];
+        if (match?.complexNo) {
+          const detailRes = await axios.get(`https://new.land.naver.com/api/complexes/${match.complexNo}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+            timeout: 5000,
+            validateStatus: (s) => s < 500,
+          });
+          const detail = detailRes.data?.complexDetail;
+          if (detail) {
+            const units = parseInt(detail.totalHouseholdCount, 10) || null;
+            const dongs = parseInt(detail.totalDongCount, 10) || null;
+            if (units || dongs) {
+              data.totalUnits = units || data.totalUnits;
+              data.dongCount = dongs || data.dongCount;
+              // DB 업데이트 (비동기, 에러 무시)
+              pool.query(
+                'UPDATE apartments SET total_units = COALESCE($1, total_units), dong_count = COALESCE($2, dong_count) WHERE id = $3',
+                [units, dongs, id]
+              ).catch(() => {});
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     await redis.set(cacheKey, JSON.stringify(data), 'EX', 1800);
     return res.json(data);
   } catch (err) {

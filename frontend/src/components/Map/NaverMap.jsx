@@ -209,12 +209,14 @@ export default function NaverMap() {
   // 마커 렌더링 — 항상 동일한 형식, 모드 전환 없음
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map || !items.length) {
-      // 데이터가 없을 때만 마커 제거 (로딩 중에는 이전 마커 유지)
-      if (!isFetching) {
-        markersRef.current.forEach((m) => m.setMap(null));
-        markersRef.current = [];
-      }
+    if (!map) return;
+
+    // 로딩 중이면 이전 마커 유지
+    if (isFetching) return;
+
+    if (!items.length) {
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
       return;
     }
 
@@ -299,7 +301,7 @@ export default function NaverMap() {
 
       markersRef.current.push(marker);
     });
-  }, [items, filters]);
+  }, [items, filters, isFetching]);
 
   useEffect(() => {
     window.__navigateToApartment__ = (id) => navigate(`/apartment/${id}`);

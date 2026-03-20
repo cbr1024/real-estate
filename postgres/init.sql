@@ -9,6 +9,7 @@ CREATE TABLE apartments (
     build_year INTEGER,
     total_units INTEGER,
     dong_count INTEGER,
+    kapt_code VARCHAR(20),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

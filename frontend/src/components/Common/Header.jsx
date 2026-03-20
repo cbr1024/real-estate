@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import useAuthStore from '../../stores/useAuthStore';
 import useCompareStore from '../../stores/useCompareStore';
-import { getMe, logout as logoutApi } from '../../api/auth';
+import { getMe, logout as logoutApi, devAdminLogin } from '../../api/auth';
 import SearchBar from './SearchBar';
 
 export default function Header() {
@@ -162,12 +162,23 @@ export default function Header() {
               <Link to="/subscription" className="text-[13px] text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-all">
                 구독
               </Link>
-              <Link to="/login" className="text-[13px] text-slate-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-all">
+              <Link to="/login" className="text-[13px] font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 px-4 py-1.5 rounded-lg transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/40 ml-1">
                 로그인
               </Link>
-              <Link to="/register" className="text-[13px] font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 px-4 py-1.5 rounded-lg transition-all shadow-md shadow-blue-500/20 hover:shadow-blue-500/40 ml-1">
-                회원가입
-              </Link>
+              <button
+                onClick={async () => {
+                  try {
+                    const data = await devAdminLogin();
+                    login(data.user);
+                    navigate('/');
+                  } catch (err) {
+                    alert(err.response?.data?.error || '관리자 로그인 실패');
+                  }
+                }}
+                className="text-[13px] font-semibold text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-3 py-1.5 rounded-lg transition-all shadow-md shadow-red-500/20 hover:shadow-red-500/40 ml-1"
+              >
+                관리자
+              </button>
             </>
           )}
         </div>
@@ -318,15 +329,23 @@ export default function Header() {
                   </svg>
                   구독
                 </Link>
-                <Link to="/login" className="flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                  </svg>
+                <Link to="/login" className="block text-center text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 px-4 py-2.5 rounded-lg mt-2">
                   로그인
                 </Link>
-                <Link to="/register" className="block text-center text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-600 px-4 py-2.5 rounded-lg mt-2">
-                  회원가입
-                </Link>
+                <button
+                  onClick={async () => {
+                    try {
+                      const data = await devAdminLogin();
+                      login(data.user);
+                      navigate('/');
+                    } catch (err) {
+                      alert(err.response?.data?.error || '관리자 로그인 실패');
+                    }
+                  }}
+                  className="w-full text-center text-sm font-semibold text-white bg-gradient-to-r from-red-500 to-red-600 px-4 py-2.5 rounded-lg mt-1.5"
+                >
+                  관리자 로그인
+                </button>
               </>
             )}
           </div>

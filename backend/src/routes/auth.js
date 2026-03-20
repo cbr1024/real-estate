@@ -172,6 +172,52 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
+// ── POST /dev-admin-login — 개발용 관리자 즉시 로그인 ──
+router.post('/dev-admin-login', async (req, res) => {
+  try {
+    // admin 유저 조회 (없으면 자동 생성)
+    let result = await pool.query(
+      `SELECT u.id, u.email, u.nickname, u.role,
+              sp.name AS plan_name, sp.display_name AS plan_display_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.role = 'admin' LIMIT 1`
+    );
+
+    let user;
+    if (result.rows.length === 0) {
+      const hashedPw = await bcrypt.hash('admin1234', 10);
+      const insert = await pool.query(
+        `INSERT INTO users (email, password, nickname, email_verified, role)
+         VALUES ('admin@sisetong.com', $1, '관리자', true, 'admin')
+         RETURNING id, email, nickname, role`,
+        [hashedPw]
+      );
+      user = insert.rows[0];
+      user.plan_name = null;
+      user.plan_display_name = null;
+    } else {
+      user = result.rows[0];
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    await redis.set(`refresh:${user.id}`, refreshToken, 'EX', 7 * 24 * 60 * 60).catch(() => {});
+    setTokenCookies(res, accessToken, refreshToken);
+
+    return res.json({
+      user: {
+        id: user.id, email: user.email, nickname: user.nickname,
+        role: user.role,
+        subscription: { plan_name: user.plan_name, plan_display_name: user.plan_display_name },
+      },
+    });
+  } catch (err) {
+    console.error('Dev admin login error:', err);
+    return res.status(500).json({ error: '관리자 로그인 실패' });
+  }
+});
+
 // ── POST /login — 로그인 시도 제한 + HttpOnly 쿠키 ──
 router.post('/login', async (req, res) => {
   try {

@@ -10,6 +10,11 @@ export const login = async ({ email, password }) => {
   return response.data;
 };
 
+export const devAdminLogin = async () => {
+  const response = await client.post('/auth/dev-admin-login');
+  return response.data;
+};
+
 export const logout = async () => {
   const response = await client.post('/auth/logout');
   return response.data;
