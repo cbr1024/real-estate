@@ -1,18 +1,20 @@
 const redis = require('../config/redis');
 const pool = require('../config/database');
 
-// 네이버 NCP 무료 한도 (월별)
+// API별 무료 한도
 const MONTHLY_LIMITS = {
-  maps_js: 6000000,    // Dynamic Map: 무료 600만 로드/월
-  geocode: 30000,      // Geocoding: 무료 3만건/월
-  place_search: 25000, // Place Search: 무료 2.5만건/월
+  maps_js: 6000000,       // NCP Dynamic Map: 무료 600만/월
+  geocode: 30000,         // NCP Geocoding: 무료 3만/월
+  place_search: 25000,    // 네이버 검색 API 지역검색: 일 25,000건 → 월 환산
+  naver_search: 25000,    // 네이버 검색 API: 일 25,000건 (일단위 관리)
 };
 
-// 일일 안전 한도 (월 한도의 1/31 × 80%)
+// 일일 안전 한도
 const DAILY_SAFE_LIMITS = {
-  maps_js: Math.floor(MONTHLY_LIMITS.maps_js / 31 * 0.8),     // ~155,000
-  geocode: Math.floor(MONTHLY_LIMITS.geocode / 31 * 0.8),     // ~774
-  place_search: Math.floor(MONTHLY_LIMITS.place_search / 31 * 0.8), // ~645
+  maps_js: Math.floor(MONTHLY_LIMITS.maps_js / 31 * 0.8),      // ~155,000
+  geocode: Math.floor(MONTHLY_LIMITS.geocode / 31 * 0.8),      // ~774
+  place_search: 20000,    // 네이버 검색 API 일 25,000건의 80%
+  naver_search: 20000,    // 동일
 };
 
 function getDayKey(apiType) {
@@ -94,4 +96,31 @@ async function getUsageStats() {
   return { stats, dailyHistory, MONTHLY_LIMITS, DAILY_SAFE_LIMITS };
 }
 
-module.exports = { trackApiCall, checkDailyLimit, getUsageStats, DAILY_SAFE_LIMITS, MONTHLY_LIMITS };
+// 사용자별 일일 호출 제한 (무료 API 남용 방지)
+const USER_DAILY_LIMITS = {
+  place_search: 50,   // 사용자당 하루 50회
+};
+
+async function checkUserDailyLimit(apiType, userId) {
+  if (!userId) return { allowed: true };
+  const limit = USER_DAILY_LIMITS[apiType];
+  if (!limit) return { allowed: true };
+
+  const key = `api_user:${apiType}:${userId}:${new Date().toISOString().slice(0, 10)}`;
+  const current = parseInt(await redis.get(key) || '0', 10);
+  return {
+    allowed: current < limit,
+    current,
+    limit,
+    remaining: Math.max(0, limit - current),
+  };
+}
+
+async function trackUserCall(apiType, userId) {
+  if (!userId) return;
+  const key = `api_user:${apiType}:${userId}:${new Date().toISOString().slice(0, 10)}`;
+  await redis.incr(key);
+  await redis.expire(key, 86400 * 2);
+}
+
+module.exports = { trackApiCall, checkDailyLimit, checkUserDailyLimit, trackUserCall, getUsageStats, DAILY_SAFE_LIMITS, MONTHLY_LIMITS };

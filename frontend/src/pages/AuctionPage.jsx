@@ -19,12 +19,14 @@ const SORT_OPTIONS = [
 
 function formatPrice(value) {
   if (!value) return '-';
-  if (value >= 10000) {
-    const eok = Math.floor(value / 10000);
-    const remainder = value % 10000;
+  // 원 단위 → 만원 단위로 변환
+  const man = Math.round(value / 10000);
+  if (man >= 10000) {
+    const eok = Math.floor(man / 10000);
+    const remainder = man % 10000;
     return remainder > 0 ? `${eok}억 ${remainder.toLocaleString()}만` : `${eok}억`;
   }
-  return `${value.toLocaleString()}만`;
+  return `${man.toLocaleString()}만`;
 }
 
 export default function AuctionPage() {

@@ -38,6 +38,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: apartment-node-server
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     expose:
       - "4000"
     volumes:
@@ -67,6 +70,8 @@ services:
       - NAVER_CLIENT_SECRET=${NAVER_CLIENT_SECRET}
       - KAKAO_CLIENT_ID=${KAKAO_CLIENT_ID}
       - KAKAO_CLIENT_SECRET=${KAKAO_CLIENT_SECRET}
+      - NAVER_SEARCH_CLIENT_ID=${NAVER_SEARCH_CLIENT_ID}
+      - NAVER_SEARCH_CLIENT_SECRET=${NAVER_SEARCH_CLIENT_SECRET}
       - TOSS_SECRET_KEY=${TOSS_SECRET_KEY}
       - TOSS_CLIENT_KEY=${TOSS_CLIENT_KEY}
       - APP_URL=http://localhost

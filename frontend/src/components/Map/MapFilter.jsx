@@ -107,16 +107,23 @@ export default function MapFilter() {
 
   return (
     <div className="absolute top-4 left-4 z-10">
-      {/* Toggle Buttons Row */}
-      <div className="flex items-center gap-2">
+      {/* 1행: 상가, 경매, 학교, 지하철 */}
+      <div className="flex items-center gap-2 mb-2">
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="bg-white/50 backdrop-blur-md rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-2 hover:bg-white/70 transition-colors border border-white/40"
+          onClick={() => navigate('/commercial')}
+          className="bg-white/50 backdrop-blur-md rounded-lg shadow-lg px-3 py-2.5 flex items-center gap-1.5 hover:bg-white/70 transition-colors border border-white/40 text-gray-600"
         >
-          <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-          </svg>
-          <span className="text-sm font-medium text-gray-700">필터</span>
+          <span className="text-base">🏢</span>
+          <span className="text-sm font-medium">상가</span>
+        </button>
+
+        <button
+          onClick={() => navigate('/auctions')}
+          className="bg-white/50 backdrop-blur-md rounded-lg shadow-lg px-3 py-2.5 flex items-center gap-1.5 hover:bg-white/70 transition-colors border border-white/40 text-gray-600"
+        >
+          <span className="text-base">⚖️</span>
+          <span className="text-sm font-medium">경매</span>
+          {!isPro && <span className="text-[9px] text-violet-500 font-bold">PRO</span>}
         </button>
 
         <button
@@ -144,7 +151,19 @@ export default function MapFilter() {
           <span className="text-sm font-medium">지하철</span>
           {!isPro && <span className="text-[9px] text-violet-500 font-bold">PRO</span>}
         </button>
+      </div>
 
+      {/* 2행: 필터 버튼 */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="bg-white/50 backdrop-blur-md rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-2 hover:bg-white/70 transition-colors border border-white/40"
+        >
+          <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          <span className="text-sm font-medium text-gray-700">필터</span>
+        </button>
       </div>
 
       {/* Filter Panel */}

@@ -11,7 +11,7 @@ const API_ENDPOINTS = {
 // 상업용 부동산 API 엔드포인트
 const COMMERCIAL_API_ENDPOINTS = {
   commercial_sale: 'https://apis.data.go.kr/1613000/RTMSDataSvcNrgTrade/getRTMSDataSvcNrgTrade',
-  commercial_rent: 'https://apis.data.go.kr/1613000/RTMSDataSvcNrgRent/getRTMSDataSvcNrgRent',
+  // commercial_rent: 국토부 미제공 (상업업무용 전월세 API 없음)
   officetel_sale: 'https://apis.data.go.kr/1613000/RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade',
   officetel_rent: 'https://apis.data.go.kr/1613000/RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent',
 };
@@ -345,8 +345,14 @@ async function fetchAndInsertCommercial({ serviceKey, baseUrl, lawdCd, dealYmd, 
 
     for (const item of allItems) {
       try {
-        // 상가: 건물명 / 오피스텔: 단지명
-        const name = String(item['건물명'] || item['단지'] || item.offiNm || item.bldNm || '').trim();
+        // 상가: 건물명 없으면 "동+지번+용도"로 대체 / 오피스텔: 단지명
+        let name = String(item['건물명'] || item['단지'] || item.offiNm || item.bldNm || '').trim();
+        if (!name) {
+          const dong = (item.umdNm || item['법정동'] || '').trim();
+          const jibun = String(item.jibun || item['지번'] || '').trim();
+          const use = (item.buildingUse || item['건물용도'] || '').trim();
+          name = `${dong} ${jibun} ${use}`.trim();
+        }
         if (!name) { skipped++; continue; }
 
         const year = String(item.dealYear || item['년'] || '').trim();
@@ -426,7 +432,7 @@ async function syncCommercialData(options = {}) {
 
   const apiTypes = [
     { baseUrl: COMMERCIAL_API_ENDPOINTS.commercial_sale, tradeType: 'sale', propertyType: 'commercial' },
-    { baseUrl: COMMERCIAL_API_ENDPOINTS.commercial_rent, tradeType: 'rent', propertyType: 'commercial' },
+    // 상업업무용 전월세: 국토부 미제공
     { baseUrl: COMMERCIAL_API_ENDPOINTS.officetel_sale, tradeType: 'sale', propertyType: 'officetel' },
     { baseUrl: COMMERCIAL_API_ENDPOINTS.officetel_rent, tradeType: 'rent', propertyType: 'officetel' },
   ];

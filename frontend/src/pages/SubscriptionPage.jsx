@@ -162,28 +162,23 @@ export default function SubscriptionPage() {
       return;
     }
 
-    // 무료 체험 가능하면 체험 먼저 제안
+    // 첫 구매: 무료 체험 1개월 자동 적용
     if (trialEligible) {
-      const useTrial = confirm(
-        `🎉 첫 결제 혜택!\n${plan.display_name} 플랜을 30일 무료로 체험할 수 있습니다.\n\n무료 체험을 시작하시겠습니까?\n(취소를 누르면 바로 결제로 진행합니다)`
-      );
-      if (useTrial) {
-        setProcessing(true);
-        try {
-          const data = await startFreeTrial(plan.id);
-          updateSubscription({
-            plan_name: data.subscription.plan_name,
-            plan_display_name: data.subscription.plan_display_name,
-          });
-          setTrialEligible(false);
-          setPaymentResult({ success: true, message: data.message });
-        } catch (err) {
-          alert(err.response?.data?.error || '무료 체험 시작에 실패했습니다.');
-        } finally {
-          setProcessing(false);
-        }
-        return;
+      setProcessing(true);
+      try {
+        const data = await startFreeTrial(plan.id);
+        updateSubscription({
+          plan_name: data.subscription.plan_name,
+          plan_display_name: data.subscription.plan_display_name,
+        });
+        setTrialEligible(false);
+        setPaymentResult({ success: true, message: data.message });
+      } catch (err) {
+        alert(err.response?.data?.error || '무료 체험 시작에 실패했습니다.');
+      } finally {
+        setProcessing(false);
       }
+      return;
     }
 
     // 유료 플랜 — 결제 진행
@@ -299,11 +294,11 @@ export default function SubscriptionPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 -mt-8 pb-16">
-        {/* 무료 체험 배너 */}
-        {isAuthenticated && trialEligible && (
+        {/* 무료 체험 배너 — 무료 플랜 사용자 + 체험 미사용 시에만 */}
+        {isAuthenticated && trialEligible && currentPlanName === 'free' && (
           <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-5 text-white text-center shadow-lg">
-            <p className="text-lg font-bold">첫 결제 혜택 — 30일 무료 체험</p>
-            <p className="text-sm text-blue-100 mt-1">유료 플랜을 선택하면 결제 없이 30일간 무료로 이용할 수 있습니다</p>
+            <p className="text-lg font-bold">첫 구매 혜택 — 1개월 무료 구독</p>
+            <p className="text-sm text-blue-100 mt-1">유료 플랜을 처음 선택하시면 결제 없이 30일간 무료로 이용할 수 있습니다</p>
           </div>
         )}
 
@@ -397,6 +392,8 @@ export default function SubscriptionPage() {
                       '다운그레이드'
                     ) : plan.price === 0 ? (
                       '무료로 시작'
+                    ) : trialEligible && currentPlanName === 'free' ? (
+                      '1개월 무료 체험'
                     ) : (
                       '결제하기'
                     )}
