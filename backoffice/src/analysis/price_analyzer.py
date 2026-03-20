@@ -74,33 +74,47 @@ def compare_nearby(
     db: Session, apartment_id: int, radius_km: float = 1.0
 ) -> dict:
     """반경 내 주변 아파트 시세를 비교합니다."""
-    target = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+    try:
+        target = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+    except Exception as e:
+        import logging
+        logging.error(f"compare_nearby target query failed: {e}")
+        return {"error": f"DB 조회 실패: {str(e)}", "주변_아파트_수": 0, "비교결과": []}
+
     if not target:
-        return {"error": "아파트를 찾을 수 없습니다."}
+        return {"error": "아파트를 찾을 수 없습니다.", "주변_아파트_수": 0, "비교결과": []}
 
     if target.lat is None or target.lng is None:
-        return {"error": "아파트 좌표 정보가 없습니다."}
+        return {"error": "아파트 좌표 정보가 없습니다.", "주변_아파트_수": 0, "비교결과": []}
 
     target_lat = float(target.lat)
     target_lng = float(target.lng)
 
     # Haversine approximation: 1 degree latitude ~ 111km
-    lat_diff = radius_km / 111.0
-    lon_diff = radius_km / (111.0 * np.cos(np.radians(target_lat)))
+    lat_diff = float(radius_km / 111.0)
+    lon_diff = float(radius_km / (111.0 * np.cos(np.radians(target_lat))))
 
-    nearby_apartments = (
-        db.query(Apartment)
-        .filter(
-            Apartment.id != apartment_id,
-            Apartment.lat.between(
-                target_lat - lat_diff, target_lat + lat_diff
-            ),
-            Apartment.lng.between(
-                target_lng - lon_diff, target_lng + lon_diff
-            ),
+    lat_min = float(target_lat - lat_diff)
+    lat_max = float(target_lat + lat_diff)
+    lng_min = float(target_lng - lon_diff)
+    lng_max = float(target_lng + lon_diff)
+
+    from sqlalchemy import text
+    import logging
+    logging.info(f"compare_nearby: apt={apartment_id}, lat={target_lat}, lng={target_lng}, range=({lat_min},{lat_max},{lng_min},{lng_max})")
+    try:
+        nearby_apartments = (
+            db.query(Apartment)
+            .filter(text(
+                "apartments.id != :aid AND apartments.lat BETWEEN :lat_min AND :lat_max AND apartments.lng BETWEEN :lng_min AND :lng_max"
+            ))
+            .params(aid=apartment_id, lat_min=lat_min, lat_max=lat_max, lng_min=lng_min, lng_max=lng_max)
+            .all()
         )
-        .all()
-    )
+        logging.info(f"compare_nearby: found {len(nearby_apartments)} nearby")
+    except Exception as e:
+        logging.error(f"compare_nearby query error: {e}")
+        return {"대상_아파트": target.name, "반경_km": radius_km, "주변_아파트_수": 0, "비교결과": [], "error": str(e)}
 
     if not nearby_apartments:
         return {

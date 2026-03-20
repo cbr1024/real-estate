@@ -75,15 +75,20 @@ def _full_analysis_cached(apartment_id: int, db: Session):
         },
     }
 
-    if trades_df.empty:
+    # 거래 내역이 없어도 주변 비교는 제공
+    if not trades_df.empty:
+        result["pricePerArea"] = calculate_price_per_area(trades_df)
+        result["priceTrend"] = calculate_trend(trades_df)
+        result["prediction"] = predict_price(trades_df)
+        result["outliers"] = detect_outliers(trades_df)
+    else:
         result["message"] = "거래 내역이 없습니다."
-        return result
 
-    result["pricePerArea"] = calculate_price_per_area(trades_df)
-    result["priceTrend"] = calculate_trend(trades_df)
-    result["nearbyComparison"] = compare_nearby(db, apartment_id)
-    result["prediction"] = predict_price(trades_df)
-    result["outliers"] = detect_outliers(trades_df)
+    # 주변 비교는 항상 실행
+    try:
+        result["nearbyComparison"] = compare_nearby(db, apartment_id)
+    except Exception as e:
+        result["nearbyComparison"] = {"주변_아파트_수": 0, "비교결과": [], "error": str(e)}
 
     return result
 

@@ -313,6 +313,7 @@ export default function DetailPage() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">유형</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">거래일</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">면적(㎡)</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">층</th>
@@ -321,17 +322,24 @@ export default function DetailPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {trades.length > 0 ? (
-                  trades.map((trade, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-700">{dayjs(trade.tradeDate).format('YYYY.MM.DD')}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{trade.area}㎡ ({Math.round(trade.area / 3.306)}평)</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{trade.floor}층</td>
-                      <td className="px-4 py-3 text-sm font-semibold text-primary-600 text-right">{formatPrice(trade.price)}만원</td>
-                    </tr>
-                  ))
+                  trades.map((trade, i) => {
+                    const typeLabel = trade.tradeType === 'sale' ? '매매' : trade.tradeType === 'jeonse' ? '전세' : trade.tradeType === 'monthly' ? '월세' : trade.tradeType || '-';
+                    const typeColor = trade.tradeType === 'sale' ? 'bg-blue-50 text-blue-600' : trade.tradeType === 'jeonse' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600';
+                    return (
+                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{dayjs(trade.tradeDate).format('YYYY.MM.DD')}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{trade.area}㎡ ({Math.round(trade.area / 3.306)}평)</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{trade.floor}층</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-primary-600 text-right">{formatPrice(trade.price)}만원</td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">거래 내역이 없습니다</td>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">거래 내역이 없습니다</td>
                   </tr>
                 )}
               </tbody>
