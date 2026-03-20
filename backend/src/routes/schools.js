@@ -71,55 +71,84 @@ router.get('/apartment/:id', async (req, res) => {
       return res.json(result);
     }
 
-    // Naver Places API로 학교 검색
+    // 네이버 검색 API(지역검색)로 학교 검색
     const { allowed } = await checkDailyLimit('place_search');
     if (!allowed) {
       return res.status(429).json({ error: '일일 API 한도에 도달했습니다.', schools: [] });
     }
 
-    const response = await axios.get('https://naveropenapi.apigw.ntruss.com/map-place/v1/search', {
-      params: { query: '학교', coordinate: `${lng},${lat}`, display: 20 },
-      headers: {
-        'X-NCP-APIGW-API-KEY-ID': process.env.NAVER_MAP_CLIENT_ID,
-        'X-NCP-APIGW-API-KEY': process.env.NAVER_MAP_CLIENT_SECRET,
-      },
-    });
+    const searchClientId = process.env.NAVER_SEARCH_CLIENT_ID;
+    const searchClientSecret = process.env.NAVER_SEARCH_CLIENT_SECRET;
+    if (!searchClientId || !searchClientSecret) {
+      return res.json(formatSchoolResult([]));
+    }
 
-    await trackApiCall('place_search');
+    // 역지오코딩으로 구 이름 얻기
+    let areaName = '서울';
+    try {
+      const geoRes = await axios.get('https://naveropenapi.apigw.ntruss.com/map-reversegeocode/v2/gc', {
+        params: { coords: `${lng},${lat}`, output: 'json', orders: 'legalcode' },
+        headers: {
+          'X-NCP-APIGW-API-KEY-ID': process.env.NAVER_MAP_CLIENT_ID,
+          'X-NCP-APIGW-API-KEY': process.env.NAVER_MAP_CLIENT_SECRET,
+        },
+        timeout: 5000,
+      });
+      const region = geoRes.data?.results?.[0]?.region;
+      if (region) areaName = region.area2?.name || region.area1?.name || '서울';
+    } catch (_) {}
 
     const schools = [];
-    if (response.data?.places) {
-      for (const p of response.data.places) {
-        const pLat = parseFloat(p.y);
-        const pLng = parseFloat(p.x);
-        const distance = calcDistance(parseFloat(lat), parseFloat(lng), pLat, pLng);
+    const schoolQueries = [`${areaName} 초등학교`, `${areaName} 중학교`, `${areaName} 고등학교`];
+    const baseLat = parseFloat(lat);
+    const baseLng = parseFloat(lng);
 
-        // 2km 이내 학교만
-        if (distance > 2000) continue;
+    for (const query of schoolQueries) {
+      try {
+        const response = await axios.get('https://openapi.naver.com/v1/search/local.json', {
+          params: { query, display: 5 },
+          headers: { 'X-Naver-Client-Id': searchClientId, 'X-Naver-Client-Secret': searchClientSecret },
+          timeout: 10000,
+        });
 
-        const schoolType = detectSchoolType(p.name, p.category);
-        if (schoolType === '기타') continue;
+        await trackApiCall('place_search');
 
-        const school = {
-          school_name: p.name,
-          school_type: schoolType,
-          address: p.road_address || p.address || '',
-          lat: pLat,
-          lng: pLng,
-          distance,
-          category: p.category || '',
-        };
-        schools.push(school);
+        for (const p of (response.data?.items || [])) {
+          if (!p.mapx || !p.mapy) continue;
+          // category 필터
+          if (!/초등학교|중학교|고등학교/.test(p.category || '')) continue;
 
-        // DB 캐시 저장
-        await pool.query(
-          `INSERT INTO nearby_schools (apartment_id, school_name, school_type, address, lat, lng, distance, category)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           ON CONFLICT (apartment_id, school_name) DO UPDATE SET
-             distance = EXCLUDED.distance, fetched_at = NOW()`,
-          [apartmentId, school.school_name, school.school_type, school.address, school.lat, school.lng, school.distance, school.category]
-        );
-      }
+          const pLng = parseFloat(p.mapx) / 10000000;
+          const pLat = parseFloat(p.mapy) / 10000000;
+          const distance = calcDistance(baseLat, baseLng, pLat, pLng);
+
+          if (distance > 2000) continue;
+
+          const name = p.title.replace(/<[^>]*>/g, '');
+          const schoolType = detectSchoolType(name, p.category);
+          if (schoolType === '기타') continue;
+
+          const school = {
+            school_name: name,
+            school_type: schoolType,
+            address: p.roadAddress || p.address || '',
+            lat: pLat,
+            lng: pLng,
+            distance,
+            category: p.category || '',
+          };
+          schools.push(school);
+
+          // DB 캐시 저장
+          await pool.query(
+            `INSERT INTO nearby_schools (apartment_id, school_name, school_type, address, lat, lng, distance, category)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (apartment_id, school_name) DO UPDATE SET
+               distance = EXCLUDED.distance, fetched_at = NOW()`,
+            [apartmentId, school.school_name, school.school_type, school.address, school.lat, school.lng, school.distance, school.category]
+          );
+        }
+      } catch (_) {}
     }
 
     // 거리 순 정렬
