@@ -380,7 +380,9 @@ router.get('/:id', async (req, res) => {
                WHERE th.apartment_id = a.id
                ORDER BY th.trade_date DESC LIMIT 1) AS "latestPrice",
               (SELECT MAX(th.floor) FROM trade_history th
-               WHERE th.apartment_id = a.id) AS "maxFloor"
+               WHERE th.apartment_id = a.id) AS "maxFloor",
+              (SELECT COUNT(*)::int FROM favorites f
+               WHERE f.apartment_id = a.id) AS "favoriteCount"
        FROM apartments a WHERE a.id = $1`,
       [id]
     );

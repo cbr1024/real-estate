@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import useAuthStore from '../../stores/useAuthStore';
 import useCompareStore from '../../stores/useCompareStore';
 import { getMe, logout as logoutApi, devAdminLogin } from '../../api/auth';
+import { getFavorites } from '../../api/favorites';
 import SearchBar from './SearchBar';
 
 export default function Header() {
@@ -11,6 +13,13 @@ export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { data: favorites } = useQuery({
+    queryKey: ['favorites'],
+    queryFn: getFavorites,
+    enabled: isAuthenticated,
+  });
+  const favoriteCount = favorites?.length || 0;
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -116,12 +125,19 @@ export default function Header() {
               {/* 관심 */}
               <Link
                 to="/favorites"
-                className="p-2 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-white/10 transition-all"
+                className={`relative p-2 rounded-lg hover:bg-white/10 transition-all ${
+                  favoriteCount > 0 ? 'text-rose-400' : 'text-slate-400 hover:text-rose-400'
+                }`}
                 title="관심 아파트"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill={favoriteCount > 0 ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                 </svg>
+                {favoriteCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-slate-900">
+                    {favoriteCount}
+                  </span>
+                )}
               </Link>
 
               {/* 구분선 */}
@@ -229,11 +245,13 @@ export default function Header() {
                   </div>
                 </div>
 
-                <Link to="/favorites" className="flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <Link to="/favorites" className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors ${
+                  favoriteCount > 0 ? 'text-rose-400 hover:text-rose-300 hover:bg-rose-400/5' : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}>
+                  <svg className="w-4 h-4" fill={favoriteCount > 0 ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                   </svg>
-                  관심 아파트
+                  관심 아파트 {favoriteCount > 0 && <span className="text-xs font-bold bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded-full">{favoriteCount}</span>}
                 </Link>
                 <Link to="/community" className="flex items-center gap-3 px-3 py-2.5 text-sm text-slate-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

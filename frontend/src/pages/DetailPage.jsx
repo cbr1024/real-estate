@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getApartmentDetail, getTradeHistory, getAnalysis, getApartmentStats } from '../api/apartments';
@@ -40,6 +40,11 @@ export default function DetailPage() {
   const canCompare = isAuthenticated && ['basic', 'pro'].includes(userPlan);
   const [chartTab, setChartTab] = useState('trades');
   const [showShare, setShowShare] = useState(false);
+  const [tradeTypeFilter, setTradeTypeFilter] = useState('all');
+  const [areaFilter, setAreaFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState('all');
+  const [visibleCount, setVisibleCount] = useState(10);
+  const loadMoreRef = useRef(null);
 
   const { data: apartment, isLoading: isLoadingApt } = useQuery({
     queryKey: ['apartment', id],
@@ -52,6 +57,38 @@ export default function DetailPage() {
   });
 
   const trades = tradesResponse?.data || [];
+
+  const uniqueAreas = [...new Set(trades.map((t) => Math.round(t.area / 3.306)))].sort((a, b) => a - b);
+
+  const filteredTrades = trades.filter((trade) => {
+    if (tradeTypeFilter !== 'all' && trade.tradeType !== tradeTypeFilter) return false;
+    if (areaFilter !== 'all' && Math.round(trade.area / 3.306) !== Number(areaFilter)) return false;
+    if (periodFilter !== 'all') {
+      const [num, unit] = periodFilter.split('-');
+      const cutoff = dayjs().subtract(Number(num), unit);
+      if (dayjs(trade.tradeDate).isBefore(cutoff)) return false;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [tradeTypeFilter, areaFilter, periodFilter]);
+
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((prev) => prev + 10);
+  }, []);
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) handleLoadMore(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleLoadMore, filteredTrades.length]);
 
   const { data: statsData } = useQuery({
     queryKey: ['stats', id],
@@ -221,16 +258,19 @@ export default function DetailPage() {
               {/* 관심 */}
               <button
                 onClick={handleFavoriteToggle}
-                className={`p-2.5 rounded-full border transition-colors ${
+                className={`relative flex items-center gap-1 px-2.5 py-1.5 rounded-full border transition-colors ${
                   isFavorited
                     ? 'bg-red-50 border-red-200 text-red-500'
-                    : 'bg-white border-gray-200 text-gray-400 hover:text-red-400 hover:border-red-200'
+                    : apartment.favoriteCount > 0
+                      ? 'bg-red-50 border-red-200 text-red-400'
+                      : 'bg-white border-gray-200 text-gray-400 hover:text-red-400 hover:border-red-200'
                 }`}
                 title={isFavorited ? '관심 해제' : '관심 등록'}
               >
-                <svg className="w-5 h-5" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                <svg className="w-5 h-5" fill={(isFavorited || apartment.favoriteCount > 0) ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                 </svg>
+                <span className="text-xs font-semibold">{apartment.favoriteCount ?? 0}</span>
               </button>
             </div>
           </div>
@@ -306,7 +346,60 @@ export default function DetailPage() {
         {/* Recent Trades Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800">최근 거래 내역</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <h3 className="text-lg font-bold text-gray-800">최근 거래 내역</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* 거래 유형 필터 */}
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                  {[
+                    { value: 'all', label: '전체' },
+                    { value: 'sale', label: '매매' },
+                    { value: 'jeonse', label: '전세' },
+                    { value: 'monthly', label: '월세' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setTradeTypeFilter(opt.value)}
+                      className={`px-2.5 py-1.5 font-medium transition-colors ${
+                        tradeTypeFilter === opt.value
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {/* 면적 필터 */}
+                <select
+                  value={areaFilter}
+                  onChange={(e) => setAreaFilter(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="all">전체 면적</option>
+                  {uniqueAreas.map((pyeong) => (
+                    <option key={pyeong} value={pyeong}>{pyeong}평</option>
+                  ))}
+                </select>
+                {/* 기간 필터 */}
+                <select
+                  value={periodFilter}
+                  onChange={(e) => setPeriodFilter(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="all">전체 기간</option>
+                  <option value="1-month">최근 1개월</option>
+                  <option value="3-month">최근 3개월</option>
+                  <option value="6-month">최근 6개월</option>
+                  <option value="1-year">최근 1년</option>
+                  <option value="3-year">최근 3년</option>
+                  <option value="5-year">최근 5년</option>
+                </select>
+              </div>
+            </div>
+            {filteredTrades.length !== trades.length && (
+              <p className="text-xs text-gray-400 mt-2">{filteredTrades.length}건 / 전체 {trades.length}건</p>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -321,8 +414,8 @@ export default function DetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {trades.length > 0 ? (
-                  trades.map((trade, i) => {
+                {filteredTrades.length > 0 ? (
+                  filteredTrades.slice(0, visibleCount).map((trade, i) => {
                     const typeLabel = trade.tradeType === 'sale' ? '매매' : trade.tradeType === 'jeonse' ? '전세' : trade.tradeType === 'monthly' ? '월세' : trade.tradeType || '-';
                     const typeColor = trade.tradeType === 'sale' ? 'bg-blue-50 text-blue-600' : trade.tradeType === 'jeonse' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600';
                     return (
@@ -345,6 +438,13 @@ export default function DetailPage() {
               </tbody>
             </table>
           </div>
+          {filteredTrades.length > visibleCount && (
+            <div ref={loadMoreRef} className="flex items-center justify-center py-4 border-t border-gray-100">
+              <p className="text-xs text-gray-400">
+                {visibleCount}건 / {filteredTrades.length}건 표시 중
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

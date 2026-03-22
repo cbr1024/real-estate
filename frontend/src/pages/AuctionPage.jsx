@@ -204,14 +204,24 @@ export default function AuctionPage() {
                             {item.discount_rate}% 할인
                           </span>
                         )}
+                        <button
+                          onClick={() => {
+                            const num = item.case_number?.replace(/_\d+$/, '') || '';
+                            navigator.clipboard.writeText(num);
+                            alert(`사건번호 "${num}" 복사됨`);
+                          }}
+                          className="block mt-2 text-[11px] text-gray-400 hover:text-primary-600 transition-colors"
+                        >
+                          사건번호 복사
+                        </button>
                         {item.court_url && (
                           <a
                             href={item.court_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block mt-2 text-[11px] text-gray-400 hover:text-primary-600 transition-colors"
+                            className="block mt-1 text-[11px] text-gray-400 hover:text-primary-600 transition-colors"
                           >
-                            대법원 상세 →
+                            대법원 경매 →
                           </a>
                         )}
                       </>
