@@ -46,14 +46,18 @@ router.get('/apartment/:id', async (req, res) => {
 
     const { lat, lng } = aptResult.rows[0];
     if (!lat || !lng) {
-      return res.json({ schools: [], message: '좌표 정보가 없습니다.' });
+      return res.json({ schools: [], summary: {}, totalCount: 0, message: '좌표 정보가 없습니다.' });
     }
 
-    // Redis 캐시 확인 (아파트 단위, 30일)
+    // Redis 캐시 확인 (아파트 단위, 7일)
     const cacheKey = `schools:apt:${apartmentId}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return res.json(JSON.parse(cached));
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return res.json(JSON.parse(cached));
+      }
+    } catch (redisErr) {
+      console.error('Redis get error (schools):', redisErr.message);
     }
 
     // DB 캐시 확인 (7일 이내 데이터)
@@ -67,14 +71,21 @@ router.get('/apartment/:id', async (req, res) => {
 
     if (dbSchools.rows.length > 0) {
       const result = formatSchoolResult(dbSchools.rows);
-      await redis.set(cacheKey, JSON.stringify(result), 'EX', 86400 * 7);
+      try { await redis.set(cacheKey, JSON.stringify(result), 'EX', 86400 * 7); } catch (_) {}
       return res.json(result);
     }
 
     // 네이버 검색 API(지역검색)로 학교 검색
-    const { allowed } = await checkDailyLimit('place_search');
+    let allowed = false;
+    try {
+      const limitResult = await checkDailyLimit('place_search');
+      allowed = limitResult.allowed;
+    } catch (limitErr) {
+      console.error('API limit check error:', limitErr.message);
+      allowed = true; // 한도 체크 실패 시 허용 (검색은 시도)
+    }
     if (!allowed) {
-      return res.status(429).json({ error: '일일 API 한도에 도달했습니다.', schools: [] });
+      return res.status(429).json({ error: '일일 API 한도에 도달했습니다.', schools: [], summary: {}, totalCount: 0 });
     }
 
     const searchClientId = process.env.NAVER_SEARCH_CLIENT_ID;
@@ -96,7 +107,9 @@ router.get('/apartment/:id', async (req, res) => {
       });
       const region = geoRes.data?.results?.[0]?.region;
       if (region) areaName = region.area2?.name || region.area1?.name || '서울';
-    } catch (_) {}
+    } catch (geoErr) {
+      console.error('Reverse geocode error:', geoErr.message);
+    }
 
     const schools = [];
     const schoolQueries = [`${areaName} 초등학교`, `${areaName} 중학교`, `${areaName} 고등학교`];
@@ -111,17 +124,17 @@ router.get('/apartment/:id', async (req, res) => {
           timeout: 10000,
         });
 
-        await trackApiCall('place_search');
+        try { await trackApiCall('place_search'); } catch (_) {}
 
         for (const p of (response.data?.items || [])) {
           if (!p.mapx || !p.mapy) continue;
-          // category 필터
           if (!/초등학교|중학교|고등학교/.test(p.category || '')) continue;
 
           const pLng = parseFloat(p.mapx) / 10000000;
           const pLat = parseFloat(p.mapy) / 10000000;
-          const distance = calcDistance(baseLat, baseLng, pLat, pLng);
+          if (isNaN(pLng) || isNaN(pLat)) continue;
 
+          const distance = calcDistance(baseLat, baseLng, pLat, pLng);
           if (distance > 2000) continue;
 
           const name = p.title.replace(/<[^>]*>/g, '');
@@ -139,27 +152,33 @@ router.get('/apartment/:id', async (req, res) => {
           };
           schools.push(school);
 
-          // DB 캐시 저장
-          await pool.query(
-            `INSERT INTO nearby_schools (apartment_id, school_name, school_type, address, lat, lng, distance, category)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             ON CONFLICT (apartment_id, school_name) DO UPDATE SET
-               distance = EXCLUDED.distance, fetched_at = NOW()`,
-            [apartmentId, school.school_name, school.school_type, school.address, school.lat, school.lng, school.distance, school.category]
-          );
+          // DB 캐시 저장 (실패해도 계속 진행)
+          try {
+            await pool.query(
+              `INSERT INTO nearby_schools (apartment_id, school_name, school_type, address, lat, lng, distance, category)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (apartment_id, school_name) DO UPDATE SET
+                 distance = EXCLUDED.distance, fetched_at = NOW()`,
+              [apartmentId, school.school_name, school.school_type, school.address, school.lat, school.lng, school.distance, school.category]
+            );
+          } catch (dbErr) {
+            console.error('School DB cache error:', dbErr.message);
+          }
         }
-      } catch (_) {}
+      } catch (searchErr) {
+        console.error(`School search error (${query}):`, searchErr.message);
+      }
     }
 
     // 거리 순 정렬
     schools.sort((a, b) => a.distance - b.distance);
 
     const result = formatSchoolResult(schools);
-    await redis.set(cacheKey, JSON.stringify(result), 'EX', 86400 * 7);
+    try { await redis.set(cacheKey, JSON.stringify(result), 'EX', 86400 * 7); } catch (_) {}
     return res.json(result);
   } catch (err) {
     console.error('Error fetching school info:', err.message);
-    return res.status(500).json({ error: '학군 정보 조회에 실패했습니다.', schools: [] });
+    return res.status(500).json({ error: '학군 정보 조회에 실패했습니다.', schools: [], summary: {}, totalCount: 0 });
   }
 });
 
