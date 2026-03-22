@@ -80,13 +80,12 @@ router.get('/', async (req, res) => {
                WHERE cth.property_id = cp.id)::int AS "tradeCount"
        FROM commercial_properties cp
        ${where}
-       ORDER BY ${
-         sort === 'price_asc' ? '"latestPrice" ASC NULLS LAST' :
-         sort === 'price_desc' ? '"latestPrice" DESC NULLS LAST' :
-         sort === 'area_desc' ? '"latestArea" DESC NULLS LAST' :
-         sort === 'trades' ? '"tradeCount" DESC' :
-         '"latestTradeDate" DESC NULLS LAST'
-       }
+       ORDER BY ${({
+         price_asc: '"latestPrice" ASC NULLS LAST',
+         price_desc: '"latestPrice" DESC NULLS LAST',
+         area_desc: '"latestArea" DESC NULLS LAST',
+         trades: '"tradeCount" DESC',
+       })[sort] || '"latestTradeDate" DESC NULLS LAST'}
        LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
       params
     );

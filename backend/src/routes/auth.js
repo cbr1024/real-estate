@@ -174,6 +174,9 @@ router.post('/resend-verification', async (req, res) => {
 
 // ── POST /dev-admin-login — 개발용 관리자 즉시 로그인 ──
 router.post('/dev-admin-login', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
   try {
     // admin 유저 조회 (없으면 자동 생성)
     let result = await pool.query(
